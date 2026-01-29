@@ -1,11 +1,21 @@
 # even_hub_emu
 
-Flutter-based emulator for the Even Hub WebView + glasses UI bridge.
+Flutter-based emulator for the Even Hub sdk (https://www.npmjs.com/package/@evenrealities/even_hub_sdk)
 
 ## What this includes
 - A `flutter_inappwebview` host that loads a **local** `index.html`.
 - A glass display renderer that mirrors the EvenHub container API (list/text/image).
 - A small, easy-to-edit bridge host (`EvenAppBridgeHost`) that routes messages between JS and Flutter.
+- Log console and webpage error logs
+
+## Usage
+After building and running, the app starts with a default index.html that demonstrates various sdk event handling.
+
+To load your own index.html, click the folder/open index button and pick a file.  Paths (for example javascript src paths) are relative to the directory of the index.html.
+
+If you edit the index.html or any referenced code, you can click the reload button to reload the page and reinit the emulator.
+
+There's an example app in example/demo_v1 that is mostly copied from the sdk examples.
 
 ## Local `index.html`
 The app looks for a local file at runtime:
