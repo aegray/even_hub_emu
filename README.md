@@ -17,13 +17,14 @@ If you edit the index.html or any referenced code, you can click the reload butt
 
 There's an example app in example/demo_v1 that is mostly copied from the sdk examples.
 
-## Local `index.html`
-The app looks for a local file at runtime:
+## Accuracy
+The api mostly works as you'd expect, however I'm making some guesses at how it will actually work on a phone based on the docs.  Please provide any feedback on what's off and I'll fix.
 
-1. **App documents directory**: `index.html` (highest priority)
-2. **Bundled asset**: `assets/index.html`
+Biggest known issues:
+* The event model isn't completely clear to me yet (how do I trigger a list event?  What is a text event?) so the events / interaction with the glasses are definitely wrong
 
-This lets you swap in your own web app without rebuilding. On first run, you can copy an `index.html` into the app documents directory and restart the app.
+(you can setup the simulated glasses screen and update it) but I'm flying blind (no glasses yet) as to what's not right, so if someone can give me feedback once they try on a phone I can fix it up.  Also only tested on windows so far.   If you run and click the folder button you can load your own index.html/ts/js for your app
+GitHub
 
 ## Bootstrap (first time)
 If you need platform folders (`android/`, `ios/`, etc.), run:
