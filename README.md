@@ -23,8 +23,6 @@ The api mostly works as you'd expect, however I'm making some guesses at how it 
 Biggest known issues:
 * The event model isn't completely clear to me yet (how do I trigger a list event?  What is a text event?) so the events / interaction with the glasses are definitely wrong
 
-(you can setup the simulated glasses screen and update it) but I'm flying blind (no glasses yet) as to what's not right, so if someone can give me feedback once they try on a phone I can fix it up.  Also only tested on windows so far.   If you run and click the folder button you can load your own index.html/ts/js for your app
-GitHub
 
 ## Bootstrap (first time)
 If you need platform folders (`android/`, `ios/`, etc.), run:
