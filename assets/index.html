@@ -10,6 +10,9 @@
       font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       background: #0f1410;
       color: #d9fdd3;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
     }
     header {
       padding: 16px 20px;
@@ -21,12 +24,17 @@
       grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
       gap: 16px;
       padding: 16px 20px;
+      flex: 1;
+      min-height: 0;
     }
     section {
       background: #141c16;
       border: 1px solid #1f3b29;
       border-radius: 12px;
       padding: 12px;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
     }
     button {
       background: #1f3b29;
@@ -48,6 +56,10 @@
       padding: 8px;
       border-radius: 8px;
       min-height: 80px;
+    }
+    #events {
+      flex: 1;
+      overflow-y: auto;
     }
   </style>
 </head>
@@ -110,7 +122,14 @@
 
     function appendEvent(value) {
       const log = document.getElementById('events');
-      log.textContent = `[${new Date().toLocaleTimeString()}] ${value}\n` + log.textContent;
+      const nearBottom = log.scrollTop + log.clientHeight >= log.scrollHeight - 2;
+      if (log.textContent.trim() === 'Waiting for events…') {
+        log.textContent = '';
+      }
+      log.textContent += `[${new Date().toLocaleTimeString()}] ${value}\n`;
+      if (nearBottom) {
+        log.scrollTop = log.scrollHeight;
+      }
     }
 
     function getUserInfo() {

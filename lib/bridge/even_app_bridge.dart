@@ -65,6 +65,13 @@ class EvenAppBridgeHost {
     eventPump.start(this);
   }
 
+  void resetForReload() {
+    eventPump.stop();
+    _webReady = false;
+    _pendingMessages.clear();
+    _localStorage.clear();
+  }
+
   void dispose() {
     eventPump.stop();
   }

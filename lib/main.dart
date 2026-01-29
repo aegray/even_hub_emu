@@ -2,19 +2,39 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import 'package:file_selector/file_selector.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'bridge/even_app_bridge.dart';
 import 'glasses/glasses_model.dart';
 import 'glasses/glasses_screen.dart';
 
-void main() {
+void main(List<String> args) {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const EvenHubEmuApp());
+  final indexPath = _parseIndexArgument(args);
+  runApp(EvenHubEmuApp(initialIndexPath: indexPath));
+}
+
+String? _parseIndexArgument(List<String> args) {
+  for (var i = 0; i < args.length; i++) {
+    final arg = args[i];
+    if (arg == '--index' && i + 1 < args.length) {
+      return args[i + 1];
+    }
+    if (arg.startsWith('--index=')) {
+      return arg.substring('--index='.length);
+    }
+  }
+  return null;
 }
 
 class EvenHubEmuApp extends StatelessWidget {
-  const EvenHubEmuApp({super.key});
+  const EvenHubEmuApp({
+    super.key,
+    this.initialIndexPath,
+  });
+
+  final String? initialIndexPath;
 
   @override
   Widget build(BuildContext context) {
@@ -24,13 +44,18 @@ class EvenHubEmuApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.green),
         useMaterial3: true,
       ),
-      home: const EmulatorHomePage(),
+      home: EmulatorHomePage(initialIndexPath: initialIndexPath),
     );
   }
 }
 
 class EmulatorHomePage extends StatefulWidget {
-  const EmulatorHomePage({super.key});
+  const EmulatorHomePage({
+    super.key,
+    this.initialIndexPath,
+  });
+
+  final String? initialIndexPath;
 
   @override
   State<EmulatorHomePage> createState() => _EmulatorHomePageState();
@@ -39,6 +64,9 @@ class EmulatorHomePage extends StatefulWidget {
 class _EmulatorHomePageState extends State<EmulatorHomePage> with WidgetsBindingObserver {
   late final GlassesState _state;
   late final EvenAppBridgeHost _bridgeHost;
+  late final DeviceStatus _baselineStatus;
+  String? _currentIndexPath;
+  int _webViewResetCounter = 0;
 
   @override
   void initState() {
@@ -54,9 +82,18 @@ class _EmulatorHomePageState extends State<EmulatorHomePage> with WidgetsBinding
       isInCase: false,
     );
 
+    _baselineStatus = DeviceStatus(
+      sn: deviceStatus.sn,
+      connectType: deviceStatus.connectType,
+      isWearing: deviceStatus.isWearing,
+      batteryLevel: deviceStatus.batteryLevel,
+      isCharging: deviceStatus.isCharging,
+      isInCase: deviceStatus.isInCase,
+    );
+
     _state = GlassesState(
       deviceInfo: DeviceInfo(
-        model: 'g1',
+        model: 'g2',
         sn: 'EMU-001',
         status: deviceStatus,
       ),
@@ -69,6 +106,7 @@ class _EmulatorHomePageState extends State<EmulatorHomePage> with WidgetsBinding
     );
 
     _bridgeHost = EvenAppBridgeHost(state: _state);
+    _currentIndexPath = widget.initialIndexPath;
   }
 
   @override
@@ -96,6 +134,16 @@ class _EmulatorHomePageState extends State<EmulatorHomePage> with WidgetsBinding
       appBar: AppBar(
         title: const Text('EvenHub Emulator'),
         actions: [
+          IconButton(
+            tooltip: 'Open Index',
+            onPressed: _pickAndLoadIndex,
+            icon: const Icon(Icons.folder_open),
+          ),
+          IconButton(
+            tooltip: 'Reload Index',
+            onPressed: _reloadCurrentIndex,
+            icon: const Icon(Icons.refresh),
+          ),
           IconButton(
             tooltip: 'Send Device Status',
             onPressed: _bridgeHost.pushDeviceStatusChanged,
@@ -141,6 +189,7 @@ class _EmulatorHomePageState extends State<EmulatorHomePage> with WidgetsBinding
 
   Widget _buildWebView() {
     return InAppWebView(
+      key: ValueKey('webview_$_webViewResetCounter'),
       initialSettings: InAppWebViewSettings(
         javaScriptEnabled: true,
         allowFileAccessFromFileURLs: true,
@@ -156,7 +205,7 @@ class _EmulatorHomePageState extends State<EmulatorHomePage> with WidgetsBinding
             return _bridgeHost.handleJsMessage(message);
           },
         );
-        _loadLocalIndex(controller);
+        _loadIndex(controller);
       },
       onLoadStop: (controller, url) async {
         await controller.evaluateJavascript(source: '''
@@ -203,7 +252,21 @@ class _EmulatorHomePageState extends State<EmulatorHomePage> with WidgetsBinding
     );
   }
 
-  Future<void> _loadLocalIndex(InAppWebViewController controller) async {
+  Future<void> _loadIndex(InAppWebViewController controller) async {
+    final configuredPath = _currentIndexPath;
+    if (configuredPath != null && configuredPath.isNotEmpty) {
+      final file = File(configuredPath);
+      if (await file.exists()) {
+        await controller.loadUrl(
+          urlRequest: URLRequest(
+            url: WebUri.uri(Uri.file(file.path)),
+          ),
+          allowingReadAccessTo: WebUri.uri(Uri.file(file.parent.path)),
+        );
+        return;
+      }
+    }
+
     final documents = await getApplicationDocumentsDirectory();
     final localFile = File('${documents.path}/index.html');
     if (await localFile.exists()) {
@@ -216,6 +279,47 @@ class _EmulatorHomePageState extends State<EmulatorHomePage> with WidgetsBinding
       return;
     }
     await controller.loadFile(assetFilePath: 'assets/index.html');
+  }
+
+  Future<void> _pickAndLoadIndex() async {
+    final htmlFile = await openFile(
+      acceptedTypeGroups: [
+        XTypeGroup(
+          label: 'HTML',
+          extensions: ['html', 'htm'],
+        ),
+      ],
+    );
+    if (htmlFile == null) {
+      return;
+    }
+    await _loadNewIndex(htmlFile.path);
+  }
+
+  Future<void> _reloadCurrentIndex() async {
+    await _loadNewIndex(_currentIndexPath);
+  }
+
+  Future<void> _loadNewIndex(String? path) async {
+    _bridgeHost.resetForReload();
+    _resetGlassesState();
+    if (path != null && path.isNotEmpty) {
+      _currentIndexPath = path;
+    }
+    setState(() {
+      _webViewResetCounter += 1;
+    });
+  }
+
+  void _resetGlassesState() {
+    final status = _state.deviceInfo.status;
+    status.connectType = _baselineStatus.connectType;
+    status.isWearing = _baselineStatus.isWearing;
+    status.batteryLevel = _baselineStatus.batteryLevel;
+    status.isCharging = _baselineStatus.isCharging;
+    status.isInCase = _baselineStatus.isInCase;
+    _state.startupCreated = false;
+    _state.resetPage();
   }
 
   void _toggleWearing() {

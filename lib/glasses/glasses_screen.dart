@@ -291,7 +291,7 @@ class _ViewportSize {
 
   factory _ViewportSize.fit(double width, double height) {
     const logicalWidth = 640.0;
-    const logicalHeight = 360.0;
+    const logicalHeight = 350.0;
     final scale = min(width / logicalWidth, height / logicalHeight);
     return _ViewportSize(
       width: logicalWidth * scale,
