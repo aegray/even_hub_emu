@@ -22,6 +22,7 @@ The api mostly works as you'd expect, however I'm making some guesses at how it 
 
 Biggest known issues:
 * The event model isn't completely clear to me yet (how do I trigger a list event?  What is a text event?) so the events / interaction with the glasses are definitely wrong
+* Actual image data is still untested (working on that)
 
 
 ## Bootstrap (first time)
