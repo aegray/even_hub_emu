@@ -77,6 +77,7 @@ class _EmulatorHomePageState extends State<EmulatorHomePage> with WidgetsBinding
   final List<_WebErrorEntry> _webErrorEntries = [];
   final ScrollController _webErrorScrollController = ScrollController();
   Offset? _hoverPosition;
+  bool _pixelPerfect = false;
   String? _serveRoot;
   int? _servePort;
   HttpServer? _serveServer;
@@ -164,6 +165,20 @@ class _EmulatorHomePageState extends State<EmulatorHomePage> with WidgetsBinding
               tooltip: 'Reload Index',
               onPressed: _reloadCurrentIndex,
               icon: const Icon(Icons.refresh),
+            ),
+            const SizedBox(width: 12),
+            Row(
+              children: [
+                Checkbox(
+                  value: _pixelPerfect,
+                  onChanged: (value) {
+                    setState(() {
+                      _pixelPerfect = value ?? false;
+                    });
+                  },
+                ),
+                const Text('1:1'),
+              ],
             ),
             IconButton(
               tooltip: 'Send Device Status',
@@ -541,6 +556,7 @@ class _EmulatorHomePageState extends State<EmulatorHomePage> with WidgetsBinding
                 _hoverPosition = position;
               });
             },
+            pixelPerfect: _pixelPerfect,
           ),
         ),
         _buildStatusFooter(),

@@ -11,11 +11,13 @@ class GlassesScreen extends StatelessWidget {
     required this.state,
     required this.bridgeHost,
     this.onHoverPositionChanged,
+    this.pixelPerfect = false,
   });
 
   final GlassesState state;
   final EvenAppBridgeHost bridgeHost;
   final ValueChanged<Offset?>? onHoverPositionChanged;
+  final bool pixelPerfect;
 
   @override
   Widget build(BuildContext context) {
@@ -30,7 +32,9 @@ class GlassesScreen extends StatelessWidget {
             final height = constraints.maxHeight.isFinite
                 ? constraints.maxHeight
                 : 300.0;
-            final viewport = _ViewportSize.fit(width, height);
+            final viewport = pixelPerfect
+                ? _ViewportSize.pixelPerfect()
+                : _ViewportSize.fit(width, height);
 
             return Center(
               child: MouseRegion(
@@ -126,6 +130,7 @@ class _GlassesCanvas extends StatelessWidget {
         ? container.itemContainer.itemNames
         : List.generate(max(container.itemContainer.itemCount, 1), (index) => 'Item ${index + 1}');
     final isInteractive = container.isEventCapture || container.containerID == state.eventCaptureContainerId;
+    final itemHeight = 22.0;
 
     return Positioned(
       left: container.xPosition,
@@ -135,44 +140,44 @@ class _GlassesCanvas extends StatelessWidget {
       child: Container(
         padding: EdgeInsets.all(container.paddingLength ?? 6),
         decoration: _containerDecoration(container),
-        child: Column(
-          children: [
-            for (int index = 0; index < items.length; index++)
-              Expanded(
-                child: GestureDetector(
-                  onTap: isInteractive
-                      ? () {
-                          state.selectListItem(container.containerID ?? 0, index);
-                          bridgeHost.emitListEvent(container: container, itemIndex: index);
-                        }
+        child: ListView.builder(
+          itemCount: items.length,
+          itemExtent: itemHeight + 4,
+          padding: EdgeInsets.zero,
+          itemBuilder: (context, index) {
+            return GestureDetector(
+              onTap: isInteractive
+                  ? () {
+                      state.selectListItem(container.containerID ?? 0, index);
+                      bridgeHost.emitListEvent(container: container, itemIndex: index);
+                    }
+                  : null,
+              child: Container(
+                width: double.infinity,
+                margin: const EdgeInsets.symmetric(vertical: 2),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: container.selectedIndex == index ? Colors.green.withOpacity(0.2) : Colors.transparent,
+                  border: container.itemContainer.isItemSelectBorderEn == true && container.selectedIndex == index
+                      ? Border.all(color: Colors.greenAccent, width: 1)
                       : null,
-                  child: Container(
-                    width: double.infinity,
-                    margin: const EdgeInsets.symmetric(vertical: 2),
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: container.selectedIndex == index ? Colors.green.withOpacity(0.2) : Colors.transparent,
-                      border: container.itemContainer.isItemSelectBorderEn == true && container.selectedIndex == index
-                          ? Border.all(color: Colors.greenAccent, width: 1)
-                          : null,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        items[index],
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.greenAccent,
-                          fontSize: 12,
-                        ),
-                      ),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    items[index],
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.greenAccent,
+                      fontSize: 12,
                     ),
                   ),
                 ),
               ),
-          ],
+            );
+          },
         ),
       ),
     );
@@ -310,6 +315,17 @@ class _ViewportSize {
     return _ViewportSize(
       width: logicalWidth * scale,
       height: logicalHeight * scale,
+      logicalWidth: logicalWidth,
+      logicalHeight: logicalHeight,
+    );
+  }
+
+  factory _ViewportSize.pixelPerfect() {
+    const logicalWidth = 640.0;
+    const logicalHeight = 350.0;
+    return const _ViewportSize(
+      width: logicalWidth,
+      height: logicalHeight,
       logicalWidth: logicalWidth,
       logicalHeight: logicalHeight,
     );

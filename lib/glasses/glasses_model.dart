@@ -279,8 +279,7 @@ class ListItemContainerState {
 
   factory ListItemContainerState.fromJson(Map<String, dynamic> data) {
     final itemCount = _readInt(data, ['itemCount', 'Item_Count']) ?? 0;
-    final itemNamesRaw = _readList(data, ['itemName', 'Item_Name']);
-    final itemNames = itemNamesRaw.map((entry) => entry.toString()).toList();
+    final itemNames = _readStringList(data, ['itemName', 'Item_Name']);
     return ListItemContainerState(
       itemCount: itemCount,
       itemNames: itemNames,
@@ -525,6 +524,14 @@ List<Map<String, dynamic>> _readList(Map<String, dynamic> data, List<String> key
         .whereType<Map>()
         .map((entry) => entry.map((key, value) => MapEntry(key.toString(), value)))
         .toList();
+  }
+  return [];
+}
+
+List<String> _readStringList(Map<String, dynamic> data, List<String> keys) {
+  final value = _pickLoose(data, keys);
+  if (value is List) {
+    return value.map((entry) => entry.toString()).toList();
   }
   return [];
 }
