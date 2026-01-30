@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -75,6 +76,7 @@ class _EmulatorHomePageState extends State<EmulatorHomePage> with WidgetsBinding
   final ScrollController _consoleScrollController = ScrollController();
   final List<_WebErrorEntry> _webErrorEntries = [];
   final ScrollController _webErrorScrollController = ScrollController();
+  Offset? _hoverPosition;
   String? _serveRoot;
   int? _servePort;
   HttpServer? _serveServer;
@@ -277,6 +279,58 @@ class _EmulatorHomePageState extends State<EmulatorHomePage> with WidgetsBinding
 
                 ['log', 'warn', 'error', 'debug', 'info'].forEach(wrapConsole);
 
+                var originalFetch = window.fetch ? window.fetch.bind(window) : null;
+                window.fetch = function(input, init) {
+                  if (!window.flutter_inappwebview || !window.flutter_inappwebview.callHandler) {
+                    return originalFetch ? originalFetch(input, init) : Promise.reject(new Error('fetch not available'));
+                  }
+
+                  var url = '';
+                  var method = 'GET';
+                  var headers = {};
+                  var body = null;
+
+                  if (typeof input === 'string') {
+                    url = input;
+                  } else if (input && input.url) {
+                    url = input.url;
+                    method = input.method || method;
+                    if (input.headers) {
+                      try {
+                        input.headers.forEach(function(value, key) { headers[key] = value; });
+                      } catch (e) {}
+                    }
+                  }
+
+                  if (init) {
+                    if (init.method) method = init.method;
+                    if (init.headers) {
+                      if (init.headers.forEach) {
+                        init.headers.forEach(function(value, key) { headers[key] = value; });
+                      } else {
+                        headers = Object.assign(headers, init.headers);
+                      }
+                    }
+                    if (init.body !== undefined) {
+                      body = init.body;
+                    }
+                  }
+
+                  return window.flutter_inappwebview.callHandler('fetch', {
+                    url: url,
+                    method: method,
+                    headers: headers,
+                    body: body
+                  }).then(function(result) {
+                    var status = (result && result.status) ? result.status : 0;
+                    var resHeaders = new Headers(result && result.headers ? result.headers : {});
+                    return new Response(result && result.body ? result.body : '', {
+                      status: status,
+                      headers: resHeaders
+                    });
+                  });
+                };
+
                 window._evenEmuFlushLogs = function() {
                   if (!canSend()) return;
                   var queue = window._evenEmuQueuedLogs || [];
@@ -377,6 +431,66 @@ class _EmulatorHomePageState extends State<EmulatorHomePage> with WidgetsBinding
             return null;
           },
         );
+        controller.addJavaScriptHandler(
+          handlerName: 'fetch',
+          callback: (args) async {
+            if (args.isEmpty || args.first is! Map) {
+              return null;
+            }
+            final payload = (args.first as Map).map((key, value) => MapEntry('$key', value));
+            final urlRaw = payload['url']?.toString();
+            if (urlRaw == null || urlRaw.isEmpty) {
+              return {
+                'status': 0,
+                'headers': <String, String>{},
+                'body': 'Missing url',
+              };
+            }
+            final uri = Uri.parse(urlRaw);
+            final method = (payload['method']?.toString() ?? 'GET').toUpperCase();
+            final headers = <String, String>{};
+            final rawHeaders = payload['headers'];
+            if (rawHeaders is Map) {
+              for (final entry in rawHeaders.entries) {
+                headers[entry.key.toString()] = entry.value.toString();
+              }
+            }
+            final bodyValue = payload['body'];
+            final body = bodyValue == null
+                ? null
+                : (bodyValue is String ? bodyValue : jsonEncode(bodyValue));
+
+            final client = HttpClient();
+            try {
+              final request = await client.openUrl(method, uri);
+              headers.forEach((key, value) {
+                request.headers.set(key, value);
+              });
+              if (body != null) {
+                request.add(utf8.encode(body));
+              }
+              final response = await request.close();
+              final responseBody = await response.transform(utf8.decoder).join();
+              final responseHeaders = <String, String>{};
+              response.headers.forEach((name, values) {
+                responseHeaders[name] = values.join(',');
+              });
+              return {
+                'status': response.statusCode,
+                'headers': responseHeaders,
+                'body': responseBody,
+              };
+            } catch (error) {
+              return {
+                'status': 0,
+                'headers': <String, String>{},
+                'body': error.toString(),
+              };
+            } finally {
+              client.close(force: true);
+            }
+          },
+        );
         _loadIndex(controller);
       },
       // Console output is captured via injected JS to avoid duplicate lines.
@@ -422,6 +536,11 @@ class _EmulatorHomePageState extends State<EmulatorHomePage> with WidgetsBinding
           child: GlassesScreen(
             state: _state,
             bridgeHost: _bridgeHost,
+            onHoverPositionChanged: (position) {
+              setState(() {
+                _hoverPosition = position;
+              });
+            },
           ),
         ),
         _buildStatusFooter(),
@@ -430,6 +549,7 @@ class _EmulatorHomePageState extends State<EmulatorHomePage> with WidgetsBinding
   }
 
   Widget _buildStatusFooter() {
+    final hoverPosition = _hoverPosition;
     return Padding(
       padding: const EdgeInsets.all(12),
       child: Row(
@@ -440,6 +560,14 @@ class _EmulatorHomePageState extends State<EmulatorHomePage> with WidgetsBinding
               style: Theme.of(context).textTheme.bodySmall,
             ),
           ),
+          if (hoverPosition != null)
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: Text(
+                'x: ${hoverPosition.dx.floor()}  y: ${hoverPosition.dy.floor()}',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ),
           Text(
             'Battery ${_state.deviceInfo.status.batteryLevel}%',
             style: Theme.of(context).textTheme.bodySmall,

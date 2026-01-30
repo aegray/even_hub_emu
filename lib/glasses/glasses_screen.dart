@@ -10,10 +10,12 @@ class GlassesScreen extends StatelessWidget {
     super.key,
     required this.state,
     required this.bridgeHost,
+    this.onHoverPositionChanged,
   });
 
   final GlassesState state;
   final EvenAppBridgeHost bridgeHost;
+  final ValueChanged<Offset?>? onHoverPositionChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -31,50 +33,62 @@ class GlassesScreen extends StatelessWidget {
             final viewport = _ViewportSize.fit(width, height);
 
             return Center(
-              child: SizedBox(
-                width: viewport.width,
-                height: viewport.height,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: Colors.black,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: Colors.greenAccent, width: 1.5),
-                    boxShadow: const [
-                      BoxShadow(
-                        blurRadius: 20,
-                        color: Colors.black54,
-                      ),
-                    ],
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(18),
-                    child: Stack(
-                      children: [
-                        Positioned.fill(
-                          child: Container(
-                            color: const Color(0xFF0B0D0C),
-                          ),
+              child: MouseRegion(
+                onHover: onHoverPositionChanged == null
+                    ? null
+                    : (event) {
+                        final dx = (event.localPosition.dx / viewport.width) * viewport.logicalWidth;
+                        final dy = (event.localPosition.dy / viewport.height) * viewport.logicalHeight;
+                        final clampedX = dx.clamp(0, viewport.logicalWidth - 1).toDouble();
+                        final clampedY = dy.clamp(0, viewport.logicalHeight - 1).toDouble();
+                        onHoverPositionChanged!(Offset(clampedX, clampedY));
+                      },
+                onExit: onHoverPositionChanged == null ? null : (_) => onHoverPositionChanged!(null),
+                child: SizedBox(
+                  width: viewport.width,
+                  height: viewport.height,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: Colors.black,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: Colors.greenAccent, width: 1.5),
+                      boxShadow: const [
+                        BoxShadow(
+                          blurRadius: 20,
+                          color: Colors.black54,
                         ),
-                        Positioned.fill(
-                          child: FittedBox(
-                            fit: BoxFit.contain,
-                            alignment: Alignment.topLeft,
-                            child: SizedBox(
-                              width: viewport.logicalWidth,
-                              height: viewport.logicalHeight,
-                              child: _GlassesCanvas(
-                                state: state,
-                                bridgeHost: bridgeHost,
+                      ],
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(18),
+                      child: Stack(
+                        children: [
+                          Positioned.fill(
+                            child: Container(
+                              color: const Color(0xFF0B0D0C),
+                            ),
+                          ),
+                          Positioned.fill(
+                            child: FittedBox(
+                              fit: BoxFit.contain,
+                              alignment: Alignment.topLeft,
+                              child: SizedBox(
+                                width: viewport.logicalWidth,
+                                height: viewport.logicalHeight,
+                                child: _GlassesCanvas(
+                                  state: state,
+                                  bridgeHost: bridgeHost,
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                        Positioned(
-                          left: 12,
-                          top: 8,
-                          child: _StatusPill(status: state.deviceInfo.status),
-                        ),
-                      ],
+                          Positioned(
+                            left: 12,
+                            top: 8,
+                            child: _StatusPill(status: state.deviceInfo.status),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
