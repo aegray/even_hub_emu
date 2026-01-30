@@ -5,7 +5,7 @@ Flutter-based emulator for the Even Hub sdk (https://www.npmjs.com/package/@even
 ## What this includes
 - A `flutter_inappwebview` host that loads a **local** `index.html`.
 - A glass display renderer that mirrors the EvenHub container API (list/text/image).
-- A small, easy-to-edit bridge host (`EvenAppBridgeHost`) that routes messages between JS and Flutter.
+- A small, easy-to-edit bridge host (`EvenAppBridgeHost`) that routes messages between JS and Flutter in order to implement an emulated Evenhub api.
 - Log console and webpage error logs
 
 ## Usage
