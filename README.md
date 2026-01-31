@@ -1,6 +1,6 @@
 # even_hub_emu
 
-Flutter-based emulator for the Even Hub sdk (https://www.npmjs.com/package/@evenrealities/even_hub_sdk)
+Flutter-based emulator for the Even Hub sdk (https://www.npmjs.com/package/@evenrealities/even_hub_sdk) for Even Realities G2.
 
 ## What this includes
 - A `flutter_inappwebview` host that loads a **local** `index.html`.
