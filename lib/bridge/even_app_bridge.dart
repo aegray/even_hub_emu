@@ -297,6 +297,8 @@ class EvenAppBridgeHost {
   Future<void> _sendMessageToWeb(Map<String, dynamic> message) async {
     if (_webViewController == null) return;
     final jsonMessage = jsonEncode(message);
+    final script0 = 'window._evenAppHandleMessage && console.log($jsonMessage);';
+    await _webViewController!.evaluateJavascript(source: script0);
     final script = 'window._evenAppHandleMessage && window._evenAppHandleMessage($jsonMessage);';
     await _webViewController!.evaluateJavascript(source: script);
   }

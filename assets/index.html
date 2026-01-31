@@ -71,13 +71,13 @@
   <main>
     <section>
       <h3>Bridge Calls</h3>
-      <button onclick="getUserInfo()">getUserInfo</button>
-      <button onclick="getDeviceInfo()">getGlassesInfo</button>
-      <button onclick="createStartup()">createStartUpPageContainer</button>
-      <button onclick="rebuildPage()">rebuildPageContainer</button>
-      <button onclick="updateText()">textContainerUpgrade</button>
-      <button onclick="updateImage()">updateImageRawData</button>
-      <button onclick="shutdownPage()">shutDownPageContainer</button>
+      <button id="bGetUserInfo">getUserInfo</button>
+      <button id="bGetDeviceInfo">getGlassesInfo</button>
+      <button id="bCreateStartup">createStartUpPageContainer</button>
+      <button id="bRebuildPage">rebuildPageContainer</button>
+      <button id="bUpdateText">textContainerUpgrade</button>
+      <button id="bUpdateImage">updateImageRawData</button>
+      <button id="bShutdownPage">shutDownPageContainer</button>
     </section>
     <section>
       <h3>Events</h3>
@@ -88,141 +88,7 @@
       <pre id="response">-</pre>
     </section>
   </main>
+  <script type="module" src="./dist/bundle.js"></script>
 
-  <script>
-    window._evenAppHandleMessage = function(message) {
-      if (!message) return;
-      if (message.type === 'listen_even_app_data') {
-        if (message.method === 'deviceStatusChanged') {
-          window.dispatchEvent(new CustomEvent('deviceStatusChanged', { detail: message.data }));
-        } else if (message.method === 'evenHubEvent') {
-          window.dispatchEvent(new CustomEvent('evenHubEvent', { detail: message.data }));
-        }
-      }
-    };
-
-    const bridge = {
-      call(method, data) {
-        if (!window.flutter_inappwebview || !window.flutter_inappwebview.callHandler) {
-          appendEvent('flutter_inappwebview not ready');
-          return Promise.resolve(null);
-        }
-        const message = {
-          type: 'call_even_app_method',
-          method,
-          data: data || {},
-        };
-        return window.flutter_inappwebview.callHandler('evenAppMessage', JSON.stringify(message));
-      }
-    };
-
-    function setResponse(value) {
-      document.getElementById('response').textContent = JSON.stringify(value, null, 2);
-    }
-
-    function appendEvent(value) {
-      const log = document.getElementById('events');
-      const nearBottom = log.scrollTop + log.clientHeight >= log.scrollHeight - 2;
-      if (log.textContent.trim() === 'Waiting for events…') {
-        log.textContent = '';
-      }
-      log.textContent += `[${new Date().toLocaleTimeString()}] ${value}\n`;
-      if (nearBottom) {
-        log.scrollTop = log.scrollHeight;
-      }
-    }
-
-    function getUserInfo() {
-      bridge.call('getUserInfo').then(setResponse);
-    }
-
-    function getDeviceInfo() {
-      bridge.call('getGlassesInfo').then(setResponse);
-    }
-
-    function createStartup() {
-      const payload = {
-        containerTotalNum: 2,
-        listObject: [
-          {
-            xPosition: 20,
-            yPosition: 20,
-            width: 250,
-            height: 120,
-            containerID: 1,
-            containerName: 'list-1',
-            isEventCapture: 1,
-            itemContainer: {
-              itemCount: 3,
-              itemName: ['Home', 'Stats', 'Settings']
-            }
-          }
-        ],
-        textObject: [
-          {
-            xPosition: 20,
-            yPosition: 150,
-            width: 220,
-            height: 40,
-            containerID: 2,
-            containerName: 'text-1',
-            content: 'Hello EvenHub',
-            isEventCapture: 0
-          }
-        ]
-      };
-      bridge.call('createStartUpPageContainer', payload).then(setResponse);
-    }
-
-    function rebuildPage() {
-      const payload = {
-        containerTotalNum: 1,
-        textObject: [
-          {
-            xPosition: 40,
-            yPosition: 40,
-            width: 280,
-            height: 50,
-            containerID: 3,
-            containerName: 'text-2',
-            content: 'Rebuilt page',
-            isEventCapture: 1
-          }
-        ]
-      };
-      bridge.call('rebuildPageContainer', payload).then(setResponse);
-    }
-
-    function updateText() {
-      const payload = {
-        containerID: 2,
-        containerName: 'text-1',
-        content: 'Updated text from WebView',
-      };
-      bridge.call('textContainerUpgrade', payload).then(setResponse);
-    }
-
-    function updateImage() {
-      bridge.call('updateImageRawData', {
-        containerID: 3,
-        containerName: 'img-1',
-        imageData: ''
-      }).then(setResponse);
-    }
-
-    function shutdownPage() {
-      bridge.call('shutDownPageContainer', { exitMode: 0 }).then(setResponse);
-    }
-
-    window.addEventListener('deviceStatusChanged', (event) => {
-      appendEvent(`deviceStatusChanged: ${JSON.stringify(event.detail)}`);
-    });
-
-    window.addEventListener('evenHubEvent', (event) => {
-      appendEvent(`evenHubEvent: ${JSON.stringify(event.detail)}`);
-    });
-
-    document.getElementById('status').textContent = 'Bridge: ready';
-  </script>
 </body>
 </html>

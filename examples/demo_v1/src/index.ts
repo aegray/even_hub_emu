@@ -17,7 +17,7 @@ const listContainer: ListContainerProperty = {
   containerName: 'list-1',
   itemContainer: {
     itemCount: 3,
-    itemName: ['Item 1', 'Item 2', 'Item 3'],
+    itemName: ['Item 1', 'Item a', 'Item b'],
   },
   isEventCapture: 1, // Only one container can have isEventCapture=1
 };

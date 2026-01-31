@@ -74,9 +74,9 @@ class _GlassesScreenState extends State<GlassesScreen> {
             _lastViewport = viewport;
 
             _orderedContainers = _orderedContainerList();
-            if (_orderedContainers.isNotEmpty && _focusedIndex >= _orderedContainers.length) {
-              _scheduleFocusInit(resetIndex: true);
-            } else if (_orderedContainers.isNotEmpty) {
+            final captureIndex = _eventCaptureIndex();
+            if (captureIndex != null) {
+              _focusedIndex = captureIndex;
               _scheduleFocusInit(resetIndex: false);
             }
 
@@ -113,7 +113,6 @@ class _GlassesScreenState extends State<GlassesScreen> {
                           ? null
                           : (event) {
                               _isHovering = true;
-                              _focusNode.requestFocus();
                               final dx = (event.localPosition.dx / viewport.width) * viewport.logicalWidth;
                               final dy = (event.localPosition.dy / viewport.height) * viewport.logicalHeight;
                               final clampedX = dx.clamp(0, viewport.logicalWidth - 1).toDouble();
@@ -214,18 +213,12 @@ class _GlassesScreenState extends State<GlassesScreen> {
     if (_orderedContainers.isEmpty) {
       return;
     }
-    final container = _orderedContainers[_focusedIndex];
-    _emitEvent(container, direction > 0 ? 'SCROLL_BOTTOM_EVENT' : 'SCROLL_TOP_EVENT');
-    if (_scrollWithinContainer(container, direction)) {
+    final container = _focusedContainer();
+    if (container == null) {
       return;
     }
-    final nextIndex = _focusedIndex + (direction > 0 ? 1 : -1);
-    if (nextIndex >= 0 && nextIndex < _orderedContainers.length) {
-      setState(() {
-        _focusedIndex = nextIndex;
-      });
-      _scheduleFocusInit(resetIndex: false);
-    }
+    _scrollWithinContainer(container, direction);
+    _emitEvent(container, direction > 0 ? 'SCROLL_BOTTOM_EVENT' : 'SCROLL_TOP_EVENT');
   }
 
   void _handleTap(Offset localPosition, bool doubleClick) {
@@ -240,17 +233,10 @@ class _GlassesScreenState extends State<GlassesScreen> {
       dx.clamp(0, viewport.logicalWidth - 1).toDouble(),
       dy.clamp(0, viewport.logicalHeight - 1).toDouble(),
     );
-    final containerIndex = _findContainerIndexAt(logical);
-    if (containerIndex == null) {
-      _emitEventForFocused(doubleClick ? 'DOUBLE_CLICK_EVENT' : 'CLICK_EVENT');
+    final container = _focusedContainer();
+    if (container == null) {
       return;
     }
-    setState(() {
-      _focusedIndex = containerIndex;
-    });
-    _scheduleFocusInit(resetIndex: false);
-
-    final container = _orderedContainers[containerIndex];
     if (container is ListContainerState) {
       final key = _containerKey(container);
       final controller = _listControllers[key];
@@ -271,10 +257,11 @@ class _GlassesScreenState extends State<GlassesScreen> {
   }
 
   void _emitEventForFocused(String eventType) {
-    if (_orderedContainers.isEmpty) {
+    final container = _focusedContainer();
+    if (container == null) {
       return;
     }
-    _emitEvent(_orderedContainers[_focusedIndex], eventType);
+    _emitEvent(container, eventType);
   }
 
   void _emitEvent(ContainerBaseState container, String eventType) {
@@ -299,13 +286,15 @@ class _GlassesScreenState extends State<GlassesScreen> {
       }
       final current = container.selectedIndex ?? 0;
       if (direction > 0 && current < items.length - 1) {
-        widget.state.selectListItem(container.containerID ?? 0, current + 1);
-        _ensureListVisible(container, current + 1);
+        final nextIndex = current + 1;
+        widget.state.selectListItem(container.containerID ?? 0, nextIndex);
+        _adjustListScroll(container, current, nextIndex, direction);
         return true;
       }
       if (direction < 0 && current > 0) {
-        widget.state.selectListItem(container.containerID ?? 0, current - 1);
-        _ensureListVisible(container, current - 1);
+        final nextIndex = current - 1;
+        widget.state.selectListItem(container.containerID ?? 0, nextIndex);
+        _adjustListScroll(container, current, nextIndex, direction);
         return true;
       }
       return false;
@@ -389,6 +378,33 @@ class _GlassesScreenState extends State<GlassesScreen> {
     }
   }
 
+  void _adjustListScroll(ListContainerState container, int previousIndex, int index, int direction) {
+    final key = _containerKey(container);
+    final controller = _listControllers[key];
+    if (controller == null) {
+      return;
+    }
+    final padding = container.paddingLength ?? 6;
+    final innerHeight = max(container.height - padding * 2, _listItemExtent);
+    final visibleCount = max(1, (innerHeight / _listItemExtent).floor());
+    final currentOffset = controller.hasClients ? controller.offset : 0.0;
+    final firstVisible = (currentOffset / _listItemExtent).floor();
+    final lastVisible = firstVisible + visibleCount - 1;
+
+    if (direction > 0) {
+      if (previousIndex >= lastVisible && index > lastVisible) {
+        _ensureListVisible(container, index);
+      }
+      return;
+    }
+
+    if (direction < 0) {
+      if (previousIndex <= firstVisible && index < firstVisible) {
+        _ensureListVisible(container, index);
+      }
+    }
+  }
+
   int? _findContainerIndexAt(Offset logical) {
     for (var i = 0; i < _orderedContainers.length; i++) {
       final container = _orderedContainers[i];
@@ -453,6 +469,26 @@ class _GlassesScreenState extends State<GlassesScreen> {
       return a.xPosition.compareTo(b.xPosition);
     });
     return containers;
+  }
+
+  ContainerBaseState? _focusedContainer() {
+    final captureIndex = _eventCaptureIndex();
+    if (captureIndex == null) {
+      return null;
+    }
+    if (captureIndex < 0 || captureIndex >= _orderedContainers.length) {
+      return null;
+    }
+    return _orderedContainers[captureIndex];
+  }
+
+  int? _eventCaptureIndex() {
+    for (var i = 0; i < _orderedContainers.length; i++) {
+      if (_orderedContainers[i].isEventCapture) {
+        return i;
+      }
+    }
+    return null;
   }
 }
 

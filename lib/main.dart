@@ -78,6 +78,7 @@ class _EmulatorHomePageState extends State<EmulatorHomePage> with WidgetsBinding
   final ScrollController _webErrorScrollController = ScrollController();
   Offset? _hoverPosition;
   bool _pixelPerfect = false;
+  bool _isReloading = false;
   String? _serveRoot;
   int? _servePort;
   HttpServer? _serveServer;
@@ -515,6 +516,7 @@ class _EmulatorHomePageState extends State<EmulatorHomePage> with WidgetsBinding
       },
       // Console output is captured via injected JS to avoid duplicate lines.
       onLoadError: (controller, url, code, message) {
+        _isReloading = false;
         _appendWebErrorEntry(_WebErrorEntry(
           timestamp: DateTime.now(),
           label: 'Load Error',
@@ -522,6 +524,7 @@ class _EmulatorHomePageState extends State<EmulatorHomePage> with WidgetsBinding
         ));
       },
       onLoadHttpError: (controller, url, statusCode, description) {
+        _isReloading = false;
         _appendWebErrorEntry(_WebErrorEntry(
           timestamp: DateTime.now(),
           label: 'HTTP Error',
@@ -538,12 +541,27 @@ class _EmulatorHomePageState extends State<EmulatorHomePage> with WidgetsBinding
       onLoadStop: (controller, url) async {
         await controller.evaluateJavascript(source: '''
           window._evenAppHandleMessage = window._evenAppHandleMessage || function(message) {
-            //console.log('[EvenHubEmu] Received native push', message);
+            if (window.EvenAppBridge) {
+              try {
+                window.EvenAppBridge.handleEvenAppMessage(message);
+                return;
+              } catch (e) {
+              }
+            }
+            if (!message || message.type !== 'listen_even_app_data') {
+              return;
+            }
+            if (message.method === 'deviceStatusChanged') {
+              window.dispatchEvent(new CustomEvent('deviceStatusChanged', { detail: message.data }));
+            } else if (message.method === 'evenHubEvent') {
+              window.dispatchEvent(new CustomEvent('evenHubEvent', { detail: message.data }));
+            }
           };
           if (window._evenEmuFlushLogs) {
             window._evenEmuFlushLogs();
           }
         ''');
+        _isReloading = false;
         _bridgeHost.onWebReady();
       },
     );
@@ -842,6 +860,10 @@ class _EmulatorHomePageState extends State<EmulatorHomePage> with WidgetsBinding
   }
 
   Future<void> _loadNewIndex(String? path) async {
+    if (_isReloading) {
+      return;
+    }
+    _isReloading = true;
     _bridgeHost.resetForReload();
     _resetGlassesState();
     setState(() {
