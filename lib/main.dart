@@ -166,6 +166,11 @@ class _EmulatorHomePageState extends State<EmulatorHomePage> with WidgetsBinding
               onPressed: _reloadCurrentIndex,
               icon: const Icon(Icons.refresh),
             ),
+            IconButton(
+              tooltip: 'Help',
+              onPressed: _showHelpDialog,
+              icon: const Icon(Icons.help_outline),
+            ),
             const SizedBox(width: 12),
             Row(
               children: [
@@ -797,6 +802,43 @@ class _EmulatorHomePageState extends State<EmulatorHomePage> with WidgetsBinding
 
   Future<void> _reloadCurrentIndex() async {
     await _loadNewIndex(_currentIndexPath);
+  }
+
+  void _showHelpDialog() {
+    showDialog<void>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('EvenHub Emulator Help'),
+          content: const SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Loading a page'),
+                SizedBox(height: 6),
+                Text('• Use the folder icon to select an index.html file.'),
+                Text('• Or launch with --index <path> to load a file on start.'),
+                Text('• The emulator serves the selected folder internally over HTTP.'),
+                SizedBox(height: 12),
+                Text('Controls'),
+                SizedBox(height: 6),
+                Text('• Mouse wheel / Arrow keys: scroll within the focused container.'),
+                Text('• At the top or bottom of a container, scrolling moves focus to the previous/next container.'),
+                Text('• Click or Enter: CLICK_EVENT for the focused container.'),
+                Text('• Double-click or \\ key: DOUBLE_CLICK_EVENT for the focused container.'),
+                Text('• Scroll up/down sends SCROLL_TOP_EVENT / SCROLL_BOTTOM_EVENT.'),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: Navigator.of(context).pop,
+              child: Text('Close'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   Future<void> _loadNewIndex(String? path) async {

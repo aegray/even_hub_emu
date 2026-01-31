@@ -1,11 +1,13 @@
 import 'dart:math';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../bridge/even_app_bridge.dart';
 import 'glasses_model.dart';
 
-class GlassesScreen extends StatelessWidget {
+class GlassesScreen extends StatefulWidget {
   const GlassesScreen({
     super.key,
     required this.state,
@@ -20,78 +22,159 @@ class GlassesScreen extends StatelessWidget {
   final bool pixelPerfect;
 
   @override
+  State<GlassesScreen> createState() => _GlassesScreenState();
+}
+
+class _GlassesScreenState extends State<GlassesScreen> {
+  static const double _listItemHeight = 22.0;
+  static const double _listItemExtent = 26.0;
+  static const double _textLineHeight = 14.0;
+
+  final FocusNode _focusNode = FocusNode();
+  final Map<String, ScrollController> _listControllers = {};
+  final Map<String, int> _textScrollOffsets = {};
+  List<ContainerBaseState> _orderedContainers = [];
+  int _focusedIndex = 0;
+  _ViewportSize? _lastViewport;
+  bool _focusInitScheduled = false;
+  bool _isHovering = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _focusNode.requestFocus();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    for (final controller in _listControllers.values) {
+      controller.dispose();
+    }
+    _listControllers.clear();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: state,
+      animation: widget.state,
       builder: (context, _) {
         return LayoutBuilder(
           builder: (context, constraints) {
-            final width = constraints.maxWidth.isFinite
-                ? constraints.maxWidth
-                : 400.0;
-            final height = constraints.maxHeight.isFinite
-                ? constraints.maxHeight
-                : 300.0;
-            final viewport = pixelPerfect
+            final width = constraints.maxWidth.isFinite ? constraints.maxWidth : 400.0;
+            final height = constraints.maxHeight.isFinite ? constraints.maxHeight : 300.0;
+            final viewport = widget.pixelPerfect
                 ? _ViewportSize.pixelPerfect()
                 : _ViewportSize.fit(width, height);
+            _lastViewport = viewport;
+
+            _orderedContainers = _orderedContainerList();
+            if (_orderedContainers.isNotEmpty && _focusedIndex >= _orderedContainers.length) {
+              _scheduleFocusInit(resetIndex: true);
+            } else if (_orderedContainers.isNotEmpty) {
+              _scheduleFocusInit(resetIndex: false);
+            }
+
+            _syncListControllers();
 
             return Center(
-              child: MouseRegion(
-                onHover: onHoverPositionChanged == null
-                    ? null
-                    : (event) {
-                        final dx = (event.localPosition.dx / viewport.width) * viewport.logicalWidth;
-                        final dy = (event.localPosition.dy / viewport.height) * viewport.logicalHeight;
-                        final clampedX = dx.clamp(0, viewport.logicalWidth - 1).toDouble();
-                        final clampedY = dy.clamp(0, viewport.logicalHeight - 1).toDouble();
-                        onHoverPositionChanged!(Offset(clampedX, clampedY));
+              child: Focus(
+                focusNode: _focusNode,
+                autofocus: true,
+                onKeyEvent: _handleKeyEvent,
+                child: Listener(
+                  behavior: HitTestBehavior.translucent,
+                  onPointerSignal: (event) {
+                    if (!_isHovering) {
+                      return;
+                    }
+                    if (event is PointerScrollEvent) {
+                      if (event.scrollDelta.dy > 0) {
+                        _handleScroll(1);
+                      } else if (event.scrollDelta.dy < 0) {
+                        _handleScroll(-1);
+                      }
+                    }
+                  },
+                  child: GestureDetector(
+                    onTapDown: (details) => _handleTap(details.localPosition, false),
+                    onDoubleTapDown: (details) => _handleTap(details.localPosition, true),
+                    child: MouseRegion(
+                      onEnter: (_) {
+                        _isHovering = true;
+                        _focusNode.requestFocus();
                       },
-                onExit: onHoverPositionChanged == null ? null : (_) => onHoverPositionChanged!(null),
-                child: SizedBox(
-                  width: viewport.width,
-                  height: viewport.height,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: Colors.black,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: Colors.greenAccent, width: 1.5),
-                      boxShadow: const [
-                        BoxShadow(
-                          blurRadius: 20,
-                          color: Colors.black54,
-                        ),
-                      ],
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(18),
-                      child: Stack(
-                        children: [
-                          Positioned.fill(
-                            child: Container(
-                              color: const Color(0xFF0B0D0C),
-                            ),
-                          ),
-                          Positioned.fill(
-                            child: FittedBox(
-                              fit: BoxFit.contain,
-                              alignment: Alignment.topLeft,
-                              child: SizedBox(
-                                width: viewport.logicalWidth,
-                                height: viewport.logicalHeight,
-                                child: _GlassesCanvas(
-                                  state: state,
-                                  bridgeHost: bridgeHost,
-                                ),
+                      onHover: widget.onHoverPositionChanged == null
+                          ? null
+                          : (event) {
+                              _isHovering = true;
+                              _focusNode.requestFocus();
+                              final dx = (event.localPosition.dx / viewport.width) * viewport.logicalWidth;
+                              final dy = (event.localPosition.dy / viewport.height) * viewport.logicalHeight;
+                              final clampedX = dx.clamp(0, viewport.logicalWidth - 1).toDouble();
+                              final clampedY = dy.clamp(0, viewport.logicalHeight - 1).toDouble();
+                              widget.onHoverPositionChanged!(Offset(clampedX, clampedY));
+                            },
+                      onExit: (_) {
+                        _isHovering = false;
+                        if (widget.onHoverPositionChanged != null) {
+                          widget.onHoverPositionChanged!(null);
+                        }
+                      },
+                      child: SizedBox(
+                        width: viewport.width,
+                        height: viewport.height,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: Colors.black,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: Colors.greenAccent, width: 1.5),
+                            boxShadow: const [
+                              BoxShadow(
+                                blurRadius: 20,
+                                color: Colors.black54,
                               ),
+                            ],
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(18),
+                            child: Stack(
+                              children: [
+                                Positioned.fill(
+                                  child: Container(
+                                    color: const Color(0xFF0B0D0C),
+                                  ),
+                                ),
+                                Positioned.fill(
+                                  child: FittedBox(
+                                    fit: BoxFit.contain,
+                                    alignment: Alignment.topLeft,
+                                    child: SizedBox(
+                                      width: viewport.logicalWidth,
+                                      height: viewport.logicalHeight,
+                                      child: _GlassesCanvas(
+                                        state: widget.state,
+                                        listControllers: _listControllers,
+                                        textScrollOffsets: _textScrollOffsets,
+                                        containerKeyFor: _containerKey,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                Positioned(
+                                  left: 12,
+                                  top: 8,
+                                  child: _StatusPill(status: widget.state.deviceInfo.status),
+                                ),
+                              ],
                             ),
                           ),
-                          Positioned(
-                            left: 12,
-                            top: 8,
-                            child: _StatusPill(status: state.deviceInfo.status),
-                          ),
-                        ],
+                        ),
                       ),
                     ),
                   ),
@@ -103,16 +186,288 @@ class GlassesScreen extends StatelessWidget {
       },
     );
   }
+
+  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) {
+      return KeyEventResult.ignored;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+      _handleScroll(1);
+      return KeyEventResult.handled;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+      _handleScroll(-1);
+      return KeyEventResult.handled;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.enter) {
+      _emitEventForFocused('CLICK_EVENT');
+      return KeyEventResult.handled;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.backslash) {
+      _emitEventForFocused('DOUBLE_CLICK_EVENT');
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  void _handleScroll(int direction) {
+    if (_orderedContainers.isEmpty) {
+      return;
+    }
+    final container = _orderedContainers[_focusedIndex];
+    _emitEvent(container, direction > 0 ? 'SCROLL_BOTTOM_EVENT' : 'SCROLL_TOP_EVENT');
+    if (_scrollWithinContainer(container, direction)) {
+      return;
+    }
+    final nextIndex = _focusedIndex + (direction > 0 ? 1 : -1);
+    if (nextIndex >= 0 && nextIndex < _orderedContainers.length) {
+      setState(() {
+        _focusedIndex = nextIndex;
+      });
+      _scheduleFocusInit(resetIndex: false);
+    }
+  }
+
+  void _handleTap(Offset localPosition, bool doubleClick) {
+    _focusNode.requestFocus();
+    final viewport = _lastViewport;
+    if (viewport == null) {
+      return;
+    }
+    final dx = (localPosition.dx / viewport.width) * viewport.logicalWidth;
+    final dy = (localPosition.dy / viewport.height) * viewport.logicalHeight;
+    final logical = Offset(
+      dx.clamp(0, viewport.logicalWidth - 1).toDouble(),
+      dy.clamp(0, viewport.logicalHeight - 1).toDouble(),
+    );
+    final containerIndex = _findContainerIndexAt(logical);
+    if (containerIndex == null) {
+      _emitEventForFocused(doubleClick ? 'DOUBLE_CLICK_EVENT' : 'CLICK_EVENT');
+      return;
+    }
+    setState(() {
+      _focusedIndex = containerIndex;
+    });
+    _scheduleFocusInit(resetIndex: false);
+
+    final container = _orderedContainers[containerIndex];
+    if (container is ListContainerState) {
+      final key = _containerKey(container);
+      final controller = _listControllers[key];
+      final padding = container.paddingLength ?? 6;
+      final innerY = logical.dy - container.yPosition - padding;
+      if (innerY >= 0 && innerY <= container.height - padding * 2) {
+        final scrollOffset = controller?.hasClients == true ? controller!.offset : 0.0;
+        final index = ((innerY + scrollOffset) / _listItemExtent).floor();
+        final items = _listItems(container);
+        if (index >= 0 && index < items.length) {
+          widget.state.selectListItem(container.containerID ?? 0, index);
+          _ensureListVisible(container, index);
+        }
+      }
+    }
+
+    _emitEvent(container, doubleClick ? 'DOUBLE_CLICK_EVENT' : 'CLICK_EVENT');
+  }
+
+  void _emitEventForFocused(String eventType) {
+    if (_orderedContainers.isEmpty) {
+      return;
+    }
+    _emitEvent(_orderedContainers[_focusedIndex], eventType);
+  }
+
+  void _emitEvent(ContainerBaseState container, String eventType) {
+    if (container is ListContainerState) {
+      widget.bridgeHost.emitListEvent(
+        container: container,
+        itemIndex: container.selectedIndex ?? 0,
+        eventType: eventType,
+      );
+    } else if (container is TextContainerState) {
+      widget.bridgeHost.emitTextEvent(container: container, eventType: eventType);
+    } else if (container is ImageContainerState) {
+      widget.bridgeHost.emitImageEvent(container: container, eventType: eventType);
+    }
+  }
+
+  bool _scrollWithinContainer(ContainerBaseState container, int direction) {
+    if (container is ListContainerState) {
+      final items = _listItems(container);
+      if (items.isEmpty) {
+        return false;
+      }
+      final current = container.selectedIndex ?? 0;
+      if (direction > 0 && current < items.length - 1) {
+        widget.state.selectListItem(container.containerID ?? 0, current + 1);
+        _ensureListVisible(container, current + 1);
+        return true;
+      }
+      if (direction < 0 && current > 0) {
+        widget.state.selectListItem(container.containerID ?? 0, current - 1);
+        _ensureListVisible(container, current - 1);
+        return true;
+      }
+      return false;
+    }
+
+    if (container is TextContainerState) {
+      final key = _containerKey(container);
+      final lines = _textLines(container);
+      if (lines.isEmpty) {
+        return false;
+      }
+      final current = _textScrollOffsets[key] ?? 0;
+      if (direction > 0 && current < lines.length - 1) {
+        setState(() {
+          _textScrollOffsets[key] = current + 1;
+        });
+        return true;
+      }
+      if (direction < 0 && current > 0) {
+        setState(() {
+          _textScrollOffsets[key] = current - 1;
+        });
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  void _scheduleFocusInit({required bool resetIndex}) {
+    if (_focusInitScheduled) {
+      return;
+    }
+    _focusInitScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _focusInitScheduled = false;
+      if (!mounted) {
+        return;
+      }
+      if (_orderedContainers.isEmpty) {
+        return;
+      }
+      if (resetIndex && _focusedIndex >= _orderedContainers.length) {
+        setState(() {
+          _focusedIndex = 0;
+        });
+      }
+      final container = _orderedContainers[_focusedIndex];
+      if (container is ListContainerState) {
+        if (container.selectedIndex == null || container.selectedIndex! < 0) {
+          widget.state.selectListItem(container.containerID ?? 0, 0);
+          _ensureListVisible(container, 0);
+        }
+      } else if (container is TextContainerState) {
+        final key = _containerKey(container);
+        if (!_textScrollOffsets.containsKey(key)) {
+          setState(() {
+            _textScrollOffsets[key] = 0;
+          });
+        }
+      }
+    });
+  }
+
+  void _ensureListVisible(ListContainerState container, int index) {
+    final key = _containerKey(container);
+    final controller = _listControllers[key];
+    if (controller == null) {
+      return;
+    }
+    final target = (index * _listItemExtent).toDouble();
+    if (controller.hasClients) {
+      final maxExtent = controller.position.maxScrollExtent;
+      controller.jumpTo(target.clamp(0, maxExtent));
+    } else {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!controller.hasClients) return;
+        final maxExtent = controller.position.maxScrollExtent;
+        controller.jumpTo(target.clamp(0, maxExtent));
+      });
+    }
+  }
+
+  int? _findContainerIndexAt(Offset logical) {
+    for (var i = 0; i < _orderedContainers.length; i++) {
+      final container = _orderedContainers[i];
+      if (logical.dx >= container.xPosition &&
+          logical.dx <= container.xPosition + container.width &&
+          logical.dy >= container.yPosition &&
+          logical.dy <= container.yPosition + container.height) {
+        return i;
+      }
+    }
+    return null;
+  }
+
+  List<String> _listItems(ListContainerState container) {
+    if (container.itemContainer.itemNames.isNotEmpty) {
+      return container.itemContainer.itemNames;
+    }
+    return List.generate(max(container.itemContainer.itemCount, 1), (index) => 'Item ${index + 1}');
+  }
+
+  List<String> _textLines(TextContainerState container) {
+    final content = container.content ?? '';
+    if (content.isEmpty) {
+      return const [];
+    }
+    return content.split('\n');
+  }
+
+  String _containerKey(ContainerBaseState container) {
+    if (container.containerID != null) {
+      return 'id:${container.containerID}';
+    }
+    if (container.containerName != null && container.containerName!.isNotEmpty) {
+      return 'name:${container.containerName}';
+    }
+    return 'hash:${container.hashCode}';
+  }
+
+  void _syncListControllers() {
+    final activeKeys = <String>{};
+    for (final container in widget.state.listContainers) {
+      final key = _containerKey(container);
+      activeKeys.add(key);
+      _listControllers.putIfAbsent(key, () => ScrollController());
+    }
+    final toRemove = _listControllers.keys.where((key) => !activeKeys.contains(key)).toList();
+    for (final key in toRemove) {
+      _listControllers[key]?.dispose();
+      _listControllers.remove(key);
+    }
+  }
+
+  List<ContainerBaseState> _orderedContainerList() {
+    final containers = <ContainerBaseState>[
+      ...widget.state.listContainers,
+      ...widget.state.textContainers,
+      ...widget.state.imageContainers,
+    ];
+    containers.sort((a, b) {
+      final byY = a.yPosition.compareTo(b.yPosition);
+      if (byY != 0) return byY;
+      return a.xPosition.compareTo(b.xPosition);
+    });
+    return containers;
+  }
 }
 
 class _GlassesCanvas extends StatelessWidget {
   const _GlassesCanvas({
     required this.state,
-    required this.bridgeHost,
+    required this.listControllers,
+    required this.textScrollOffsets,
+    required this.containerKeyFor,
   });
 
   final GlassesState state;
-  final EvenAppBridgeHost bridgeHost;
+  final Map<String, ScrollController> listControllers;
+  final Map<String, int> textScrollOffsets;
+  final String Function(ContainerBaseState) containerKeyFor;
 
   @override
   Widget build(BuildContext context) {
@@ -129,8 +484,8 @@ class _GlassesCanvas extends StatelessWidget {
     final items = container.itemContainer.itemNames.isNotEmpty
         ? container.itemContainer.itemNames
         : List.generate(max(container.itemContainer.itemCount, 1), (index) => 'Item ${index + 1}');
-    final isInteractive = container.isEventCapture || container.containerID == state.eventCaptureContainerId;
-    final itemHeight = 22.0;
+    final itemHeight = _GlassesScreenState._listItemHeight;
+    final controller = listControllers[containerKeyFor(container)];
 
     return Positioned(
       left: container.xPosition,
@@ -141,38 +496,32 @@ class _GlassesCanvas extends StatelessWidget {
         padding: EdgeInsets.all(container.paddingLength ?? 6),
         decoration: _containerDecoration(container),
         child: ListView.builder(
+          controller: controller,
           itemCount: items.length,
           itemExtent: itemHeight + 4,
+          physics: const NeverScrollableScrollPhysics(),
           padding: EdgeInsets.zero,
           itemBuilder: (context, index) {
-            return GestureDetector(
-              onTap: isInteractive
-                  ? () {
-                      state.selectListItem(container.containerID ?? 0, index);
-                      bridgeHost.emitListEvent(container: container, itemIndex: index);
-                    }
-                  : null,
-              child: Container(
-                width: double.infinity,
-                margin: const EdgeInsets.symmetric(vertical: 2),
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: container.selectedIndex == index ? Colors.green.withOpacity(0.2) : Colors.transparent,
-                  border: container.itemContainer.isItemSelectBorderEn == true && container.selectedIndex == index
-                      ? Border.all(color: Colors.greenAccent, width: 1)
-                      : null,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    items[index],
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.greenAccent,
-                      fontSize: 12,
-                    ),
+            return Container(
+              width: double.infinity,
+              margin: const EdgeInsets.symmetric(vertical: 2),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: container.selectedIndex == index ? Colors.green.withOpacity(0.2) : Colors.transparent,
+                border: container.itemContainer.isItemSelectBorderEn == true && container.selectedIndex == index
+                    ? Border.all(color: Colors.greenAccent, width: 1)
+                    : null,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  items[index],
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.greenAccent,
+                    fontSize: 12,
                   ),
                 ),
               ),
@@ -184,30 +533,31 @@ class _GlassesCanvas extends StatelessWidget {
   }
 
   Widget _buildTextContainer(TextContainerState container) {
-    final isInteractive = container.isEventCapture || container.containerID == state.eventCaptureContainerId;
+    final key = containerKeyFor(container);
+    final lines = (container.content ?? '').split('\n');
+    final startIndex = textScrollOffsets[key] ?? 0;
+    final padding = container.paddingLength ?? 6;
+    final maxLines = ((container.height - padding * 2) / 14.0).floor().clamp(1, lines.length);
+    final visibleLines = lines.isEmpty
+        ? ''
+        : lines.skip(startIndex).take(maxLines).join('\n');
 
     return Positioned(
       left: container.xPosition,
       top: container.yPosition,
       width: container.width,
       height: container.height,
-      child: GestureDetector(
-        onTap: isInteractive
-            ? () {
-                bridgeHost.emitTextEvent(container: container);
-              }
-            : null,
-        child: Container(
-          padding: EdgeInsets.all(container.paddingLength ?? 6),
-          decoration: _containerDecoration(container),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              container.content ?? '',
-              style: const TextStyle(
-                color: Colors.greenAccent,
-                fontSize: 12,
-              ),
+      child: Container(
+        padding: EdgeInsets.all(container.paddingLength ?? 6),
+        decoration: _containerDecoration(container),
+        child: Align(
+          alignment: Alignment.topLeft,
+          child: Text(
+            visibleLines,
+            style: const TextStyle(
+              color: Colors.greenAccent,
+              fontSize: 12,
+              height: 1.1,
             ),
           ),
         ),

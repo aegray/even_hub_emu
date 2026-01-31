@@ -261,6 +261,20 @@ class EvenAppBridgeHost {
     );
   }
 
+  void emitImageEvent({
+    required ImageContainerState container,
+    String eventType = 'CLICK_EVENT',
+  }) {
+    pushEvenHubEvent(
+      type: 'imageEvent',
+      payload: {
+        'containerID': container.containerID,
+        'containerName': container.containerName,
+        'eventType': eventType,
+      },
+    );
+  }
+
   void emitSysEvent({
     required String eventType,
   }) {
