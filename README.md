@@ -21,7 +21,7 @@ There's an example app in example/demo_v1 that is mostly copied from the sdk exa
 The api mostly works as you'd expect, however I'm making some guesses at how it will actually work on a phone based on the docs.  Please provide any feedback on what's off and I'll fix.
 
 Biggest known issues:
-* The event model isn't completely clear to me yet (how do I trigger a list event?  What is a text event?) so the events / interaction with the glasses are definitely wrong
+* The event model and controls are a guess based off the docs, it's possible when events are sent (for example on scroll) may he slightly off. 
 * Actual image data is still untested (working on that)
 
 
