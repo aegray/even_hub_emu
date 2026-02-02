@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
@@ -53,6 +54,12 @@ class EvenAppBridgeHost {
   void attachWebViewController(InAppWebViewController controller) {
     _webViewController = controller;
   }
+
+  void detachWebViewController() {
+    _webViewController = null;
+  }
+
+  InAppWebViewController? get webViewController => _webViewController;
 
   void onWebReady() {
     _webReady = true;
@@ -297,8 +304,8 @@ class EvenAppBridgeHost {
   Future<void> _sendMessageToWeb(Map<String, dynamic> message) async {
     if (_webViewController == null) return;
     final jsonMessage = jsonEncode(message);
-    final script0 = 'window._evenAppHandleMessage && console.log($jsonMessage);';
-    await _webViewController!.evaluateJavascript(source: script0);
+    //final script0 = 'window._evenAppHandleMessage && console.log($jsonMessage);';
+    //await _webViewController!.evaluateJavascript(source: script0);
     final script = 'window._evenAppHandleMessage && window._evenAppHandleMessage($jsonMessage);';
     await _webViewController!.evaluateJavascript(source: script);
   }

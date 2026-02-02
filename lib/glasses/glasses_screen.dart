@@ -14,12 +14,14 @@ class GlassesScreen extends StatefulWidget {
     required this.bridgeHost,
     this.onHoverPositionChanged,
     this.pixelPerfect = false,
+    this.onToggleWearing,
   });
 
   final GlassesState state;
   final EvenAppBridgeHost bridgeHost;
   final ValueChanged<Offset?>? onHoverPositionChanged;
   final bool pixelPerfect;
+  final ValueChanged<bool>? onToggleWearing;
 
   @override
   State<GlassesScreen> createState() => _GlassesScreenState();
@@ -83,101 +85,111 @@ class _GlassesScreenState extends State<GlassesScreen> {
             _syncListControllers();
 
             return Center(
-              child: Focus(
-                focusNode: _focusNode,
-                autofocus: true,
-                onKeyEvent: _handleKeyEvent,
-                child: Listener(
-                  behavior: HitTestBehavior.translucent,
-                  onPointerSignal: (event) {
-                    if (!_isHovering) {
-                      return;
-                    }
-                    if (event is PointerScrollEvent) {
-                      if (event.scrollDelta.dy > 0) {
-                        _handleScroll(1);
-                      } else if (event.scrollDelta.dy < 0) {
-                        _handleScroll(-1);
-                      }
-                    }
-                  },
-                  child: GestureDetector(
-                    onTapDown: (details) => _handleTap(details.localPosition, false),
-                    onDoubleTapDown: (details) => _handleTap(details.localPosition, true),
-                    child: MouseRegion(
-                      onEnter: (_) {
-                        _isHovering = true;
-                        _focusNode.requestFocus();
-                      },
-                      onHover: widget.onHoverPositionChanged == null
-                          ? null
-                          : (event) {
-                              _isHovering = true;
-                              final dx = (event.localPosition.dx / viewport.width) * viewport.logicalWidth;
-                              final dy = (event.localPosition.dy / viewport.height) * viewport.logicalHeight;
-                              final clampedX = dx.clamp(0, viewport.logicalWidth - 1).toDouble();
-                              final clampedY = dy.clamp(0, viewport.logicalHeight - 1).toDouble();
-                              widget.onHoverPositionChanged!(Offset(clampedX, clampedY));
-                            },
-                      onExit: (_) {
-                        _isHovering = false;
-                        if (widget.onHoverPositionChanged != null) {
-                          widget.onHoverPositionChanged!(null);
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Focus(
+                    focusNode: _focusNode,
+                    autofocus: true,
+                    onKeyEvent: _handleKeyEvent,
+                    child: Listener(
+                      behavior: HitTestBehavior.translucent,
+                      onPointerSignal: (event) {
+                        if (!_isHovering) {
+                          return;
+                        }
+                        if (event is PointerScrollEvent) {
+                          if (event.scrollDelta.dy > 0) {
+                            _handleScroll(1);
+                          } else if (event.scrollDelta.dy < 0) {
+                            _handleScroll(-1);
+                          }
                         }
                       },
-                      child: SizedBox(
-                        width: viewport.width,
-                        height: viewport.height,
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: Colors.black,
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: Colors.greenAccent, width: 1.5),
-                            boxShadow: const [
-                              BoxShadow(
-                                blurRadius: 20,
-                                color: Colors.black54,
-                              ),
-                            ],
-                          ),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(18),
-                            child: Stack(
-                              children: [
-                                Positioned.fill(
-                                  child: Container(
-                                    color: const Color(0xFF0B0D0C),
+                      child: GestureDetector(
+                        onTapDown: (details) => _handleTap(details.localPosition, false),
+                        onDoubleTapDown: (details) => _handleTap(details.localPosition, true),
+                        child: MouseRegion(
+                          onEnter: (_) {
+                            _isHovering = true;
+                            _focusNode.requestFocus();
+                          },
+                          onHover: widget.onHoverPositionChanged == null
+                              ? null
+                              : (event) {
+                                  _isHovering = true;
+                                  final dx = (event.localPosition.dx / viewport.width) * viewport.logicalWidth;
+                                  final dy = (event.localPosition.dy / viewport.height) * viewport.logicalHeight;
+                                  final clampedX = dx.clamp(0, viewport.logicalWidth - 1).toDouble();
+                                  final clampedY = dy.clamp(0, viewport.logicalHeight - 1).toDouble();
+                                  widget.onHoverPositionChanged!(Offset(clampedX, clampedY));
+                                },
+                          onExit: (_) {
+                            _isHovering = false;
+                            if (widget.onHoverPositionChanged != null) {
+                              widget.onHoverPositionChanged!(null);
+                            }
+                          },
+                          child: SizedBox(
+                            width: viewport.width,
+                            height: viewport.height,
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: Colors.black,
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(color: Colors.greenAccent, width: 1.5),
+                                boxShadow: const [
+                                  BoxShadow(
+                                    blurRadius: 20,
+                                    color: Colors.black54,
                                   ),
-                                ),
-                                Positioned.fill(
-                                  child: FittedBox(
-                                    fit: BoxFit.contain,
-                                    alignment: Alignment.topLeft,
-                                    child: SizedBox(
-                                      width: viewport.logicalWidth,
-                                      height: viewport.logicalHeight,
-                                      child: _GlassesCanvas(
-                                        state: widget.state,
-                                        listControllers: _listControllers,
-                                        textScrollOffsets: _textScrollOffsets,
-                                        containerKeyFor: _containerKey,
+                                ],
+                              ),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(18),
+                                child: Stack(
+                                  children: [
+                                    Positioned.fill(
+                                      child: Container(
+                                        color: const Color(0xFF0B0D0C),
                                       ),
                                     ),
-                                  ),
+                                    Positioned.fill(
+                                      child: FittedBox(
+                                        fit: BoxFit.contain,
+                                        alignment: Alignment.topLeft,
+                                        child: SizedBox(
+                                          width: viewport.logicalWidth,
+                                          height: viewport.logicalHeight,
+                                          child: _GlassesCanvas(
+                                            state: widget.state,
+                                            listControllers: _listControllers,
+                                            textScrollOffsets: _textScrollOffsets,
+                                            containerKeyFor: _containerKey,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    // Battery/status pill hidden in viewport; keep footer status line.
+                                  ],
                                 ),
-                                Positioned(
-                                  left: 12,
-                                  top: 8,
-                                  child: _StatusPill(status: widget.state.deviceInfo.status),
-                                ),
-                              ],
+                              ),
                             ),
                           ),
                         ),
                       ),
                     ),
                   ),
-                ),
+                  const SizedBox(height: 8),
+                  _ControlBar(
+                    isWearing: widget.state.deviceInfo.status.isWearing,
+                    onScrollUp: () => _handleScroll(-1),
+                    onScrollDown: () => _handleScroll(1),
+                    onClick: () => _emitEventForFocused('CLICK_EVENT'),
+                    onDoubleClick: () => _emitEventForFocused('DOUBLE_CLICK_EVENT'),
+                    onToggleWearing: widget.onToggleWearing,
+                  ),
+                ],
               ),
             );
           },
@@ -259,12 +271,14 @@ class _GlassesScreenState extends State<GlassesScreen> {
   void _emitEventForFocused(String eventType) {
     final container = _focusedContainer();
     if (container == null) {
+      debugPrint('target container was null');
       return;
     }
     _emitEvent(container, eventType);
   }
 
   void _emitEvent(ContainerBaseState container, String eventType) {
+    debugPrint('[Emu] emit $eventType -> ${container.runtimeType} id=${container.containerID} name=${container.containerName}');
     if (container is ListContainerState) {
       widget.bridgeHost.emitListEvent(
         container: container,
@@ -473,13 +487,20 @@ class _GlassesScreenState extends State<GlassesScreen> {
 
   ContainerBaseState? _focusedContainer() {
     final captureIndex = _eventCaptureIndex();
-    if (captureIndex == null) {
-      return null;
+    if (captureIndex != null &&
+        captureIndex >= 0 &&
+        captureIndex < _orderedContainers.length) {
+      return _orderedContainers[captureIndex];
     }
-    if (captureIndex < 0 || captureIndex >= _orderedContainers.length) {
-      return null;
+    final captureId = widget.state.eventCaptureContainerId;
+    if (captureId != null) {
+      for (final container in _orderedContainers) {
+        if (container.containerID == captureId) {
+          return container;
+        }
+      }
     }
-    return _orderedContainers[captureIndex];
+    return null;
   }
 
   int? _eventCaptureIndex() {
@@ -675,6 +696,89 @@ class _StatusPill extends StatelessWidget {
         child: Text(
           '${status.connectType} · ${status.batteryLevel}%',
           style: const TextStyle(color: Colors.greenAccent, fontSize: 10),
+        ),
+      ),
+    );
+  }
+}
+
+class _ControlBar extends StatelessWidget {
+  const _ControlBar({
+    required this.isWearing,
+    required this.onScrollUp,
+    required this.onScrollDown,
+    required this.onClick,
+    required this.onDoubleClick,
+    this.onToggleWearing,
+  });
+
+  final bool isWearing;
+  final VoidCallback onScrollUp;
+  final VoidCallback onScrollDown;
+  final VoidCallback onClick;
+  final VoidCallback onDoubleClick;
+  final ValueChanged<bool>? onToggleWearing;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F1410),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.greenAccent.withOpacity(0.35)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        child: Wrap(
+          spacing: 6,
+          runSpacing: 4,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            _ControlButton(label: 'Up', icon: Icons.arrow_upward, onPressed: onScrollUp),
+            _ControlButton(label: 'Down', icon: Icons.arrow_downward, onPressed: onScrollDown),
+            _ControlButton(label: 'Click', icon: Icons.touch_app, onPressed: onClick),
+            _ControlButton(label: 'Double', icon: Icons.double_arrow, onPressed: onDoubleClick),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Checkbox(
+                  value: isWearing,
+                  onChanged: onToggleWearing == null ? null : (value) => onToggleWearing!(value ?? false),
+                ),
+                const Text(
+                  'Wearing',
+                  style: TextStyle(color: Colors.greenAccent, fontSize: 12),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ControlButton extends StatelessWidget {
+  const _ControlButton({
+    required this.label,
+    required this.icon,
+    required this.onPressed,
+  });
+
+  final String label;
+  final IconData icon;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: TextButton.icon(
+        onPressed: onPressed,
+        icon: Icon(icon, size: 14, color: Colors.greenAccent),
+        label: Text(
+          label,
+          style: const TextStyle(color: Colors.greenAccent, fontSize: 12),
         ),
       ),
     );

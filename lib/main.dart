@@ -1,20 +1,45 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'dart:async';
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'bridge/even_app_bridge.dart';
 import 'glasses/glasses_model.dart';
 import 'glasses/glasses_screen.dart';
+import 'logs_page.dart';
 
 void main(List<String> args) {
-  WidgetsFlutterBinding.ensureInitialized();
-  final indexPath = _parseIndexArgument(args);
-  runApp(EvenHubEmuApp(initialIndexPath: indexPath));
+  runZonedGuarded(
+    () {
+      WidgetsFlutterBinding.ensureInitialized();
+      FlutterError.onError = (details) {
+        FlutterError.presentError(details);
+        if (details.stack != null) {
+          debugPrint(details.stack.toString());
+        }
+      };
+      PlatformDispatcher.instance.onError = (error, stack) {
+        debugPrint('Uncaught Dart error: $error');
+        debugPrint(stack.toString());
+        return true;
+      };
+
+      final indexPath = _parseIndexArgument(args);
+      runApp(EvenHubEmuApp(initialIndexPath: indexPath));
+    },
+    (error, stack) {
+      debugPrint('Zoned error: $error');
+      debugPrint(stack.toString());
+    },
+  );
 }
 
 String? _parseIndexArgument(List<String> args) {
@@ -71,14 +96,19 @@ class _EmulatorHomePageState extends State<EmulatorHomePage> with WidgetsBinding
   String? _currentIndexPath;
   String? _currentIndexUrl;
   _ServeMode _serveMode = _ServeMode.assets;
+  static const _mobileUrlPrefKey = 'mobile.index.url';
+  int _externalReloadNonce = 0;
   int _webViewResetCounter = 0;
-  final List<_ConsoleEntry> _consoleEntries = [];
+  final List<ConsoleEntry> _consoleEntries = [];
   final ScrollController _consoleScrollController = ScrollController();
-  final List<_WebErrorEntry> _webErrorEntries = [];
+  final List<WebErrorEntry> _webErrorEntries = [];
   final ScrollController _webErrorScrollController = ScrollController();
   Offset? _hoverPosition;
   bool _pixelPerfect = false;
+  double _webViewZoom = 1.0;
+  InAppWebViewController? _activeWebViewController;
   bool _isReloading = false;
+  bool _webReadyNotified = false;
   String? _serveRoot;
   int? _servePort;
   HttpServer? _serveServer;
@@ -87,6 +117,7 @@ class _EmulatorHomePageState extends State<EmulatorHomePage> with WidgetsBinding
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _pixelPerfect = true;
 
     final deviceStatus = DeviceStatus(
       sn: 'EMU-001',
@@ -125,11 +156,15 @@ class _EmulatorHomePageState extends State<EmulatorHomePage> with WidgetsBinding
     if (_currentIndexPath != null && _currentIndexPath!.isNotEmpty) {
       _serveMode = _ServeMode.directory;
     }
+    _loadMobileSavedUrl();
   }
 
   @override
   void dispose() {
+    debugPrint("dispose_main");
     WidgetsBinding.instance.removeObserver(this);
+    _activeWebViewController = null;
+    _bridgeHost.detachWebViewController();
     _bridgeHost.dispose();
     _consoleScrollController.dispose();
     _webErrorScrollController.dispose();
@@ -151,72 +186,90 @@ class _EmulatorHomePageState extends State<EmulatorHomePage> with WidgetsBinding
 
   @override
   Widget build(BuildContext context) {
+    final isMobile = Platform.isAndroid || Platform.isIOS;
     return Scaffold(
-      appBar: AppBar(
-        title: Row(
-          children: [
-            const Text('EvenHub Emulator'),
-            const SizedBox(width: 12),
-            IconButton(
-              tooltip: 'Open Index',
-              onPressed: _pickAndLoadIndex,
-              icon: const Icon(Icons.folder_open),
+      floatingActionButton: isMobile
+          ? Builder(
+              builder: (context) => FloatingActionButton(
+                onPressed: () => Scaffold.of(context).openDrawer(),
+                tooltip: 'Menu',
+                child: const Icon(Icons.menu),
+              ),
+            )
+          : null,
+      appBar: isMobile
+          ? null
+          : AppBar(
+              title: Row(
+                children: [
+                  const Text('EvenHub Emulator'),
+                  const SizedBox(width: 12),
+                  IconButton(
+                    tooltip: 'Open Index',
+                    onPressed: _pickAndLoadIndex,
+                    icon: const Icon(Icons.folder_open),
+                  ),
+                  IconButton(
+                    tooltip: 'Reload Index',
+                    onPressed: _reloadCurrentIndex,
+                    icon: const Icon(Icons.refresh),
+                  ),
+                  IconButton(
+                    tooltip: 'Help',
+                    onPressed: _showHelpDialog,
+                    icon: const Icon(Icons.help_outline),
+                  ),
+                  const SizedBox(width: 12),
+                  Row(
+                    children: [
+                      Checkbox(
+                        value: _pixelPerfect,
+                        onChanged: (value) {
+                          setState(() {
+                            _pixelPerfect = value ?? false;
+                          });
+                        },
+                      ),
+                      const Text('1:1'),
+                    ],
+                  ),
+                  IconButton(
+                    tooltip: 'Send Device Status',
+                    onPressed: _bridgeHost.pushDeviceStatusChanged,
+                    icon: const Icon(Icons.wifi),
+                  ),
+                  IconButton(
+                    tooltip: 'Battery -10%',
+                    onPressed: _drainBattery,
+                    icon: const Icon(Icons.battery_alert),
+                  ),
+                ],
+              ),
             ),
-            IconButton(
-              tooltip: 'Reload Index',
-              onPressed: _reloadCurrentIndex,
-              icon: const Icon(Icons.refresh),
-            ),
-            IconButton(
-              tooltip: 'Help',
-              onPressed: _showHelpDialog,
-              icon: const Icon(Icons.help_outline),
-            ),
-            const SizedBox(width: 12),
-            Row(
-              children: [
-                Checkbox(
-                  value: _pixelPerfect,
-                  onChanged: (value) {
-                    setState(() {
-                      _pixelPerfect = value ?? false;
-                    });
-                  },
-                ),
-                const Text('1:1'),
-              ],
-            ),
-            IconButton(
-              tooltip: 'Send Device Status',
-              onPressed: _bridgeHost.pushDeviceStatusChanged,
-              icon: const Icon(Icons.wifi),
-            ),
-            IconButton(
-              tooltip: 'Toggle Wearing',
-              onPressed: _toggleWearing,
-              icon: const Icon(Icons.visibility),
-            ),
-            IconButton(
-              tooltip: 'Battery -10%',
-              onPressed: _drainBattery,
-              icon: const Icon(Icons.battery_alert),
-            ),
-          ],
-        ),
-      ),
+      drawer: _buildDrawer(isMobile),
       body: SafeArea(
         child: Column(
           children: [
             Expanded(
               child: LayoutBuilder(
                 builder: (context, constraints) {
+                  if (isMobile) {
+                    return Column(
+                      children: [
+                        Expanded(child: _buildWebView()),
+                        const Divider(height: 1),
+                        _buildGlassesPanel(compact: true),
+                      ],
+                    );
+                  }
+
                   final isWide = constraints.maxWidth > 900;
                   if (isWide) {
                     return Row(
                       children: [
                         Expanded(child: _buildWebView()),
                         const VerticalDivider(width: 1),
-                        Expanded(child: _buildGlassesPanel()),
+                        Expanded(child: _buildGlassesPanel(compact: false)),
                       ],
                     );
                   }
@@ -224,14 +277,16 @@ class _EmulatorHomePageState extends State<EmulatorHomePage> with WidgetsBinding
                     children: [
                       Expanded(child: _buildWebView()),
                       const Divider(height: 1),
-                      Expanded(child: _buildGlassesPanel()),
+                      Expanded(child: _buildGlassesPanel(compact: false)),
                     ],
                   );
                 },
               ),
             ),
-            const Divider(height: 1),
-            _buildConsolePanel(),
+            if (!isMobile) ...[
+              const Divider(height: 1),
+              _buildConsolePanel(),
+            ],
           ],
         ),
       ),
@@ -246,9 +301,12 @@ class _EmulatorHomePageState extends State<EmulatorHomePage> with WidgetsBinding
         allowFileAccessFromFileURLs: true,
         allowUniversalAccessFromFileURLs: true,
         transparentBackground: true,
+        mixedContentMode: MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
       ),
       onWebViewCreated: (controller) {
+        print("onWebViewCreated");
         _bridgeHost.attachWebViewController(controller);
+        _activeWebViewController = controller;
         controller.addUserScript(
           userScript: UserScript(
             source: '''
@@ -352,6 +410,74 @@ class _EmulatorHomePageState extends State<EmulatorHomePage> with WidgetsBinding
                   });
                 };
 
+                var OriginalXHR = window.XMLHttpRequest;
+                if (OriginalXHR) {
+                  function ProxyXHR() {
+                    this._method = 'GET';
+                    this._url = '';
+                    this._headers = {};
+                    this._async = true;
+                    this.readyState = 0;
+                    this.status = 0;
+                    this.responseText = '';
+                    this.response = '';
+                  }
+
+                  ProxyXHR.prototype.open = function(method, url, async) {
+                    this._method = method || 'GET';
+                    this._url = url;
+                    this._async = async !== false;
+                    this.readyState = 1;
+                    if (this.onreadystatechange) this.onreadystatechange();
+                  };
+
+                  ProxyXHR.prototype.setRequestHeader = function(key, value) {
+                    this._headers[key] = value;
+                  };
+
+                  ProxyXHR.prototype.send = function(body) {
+                    var self = this;
+                    if (!window.flutter_inappwebview || !window.flutter_inappwebview.callHandler) {
+                      var xhr = new OriginalXHR();
+                      xhr.open(self._method, self._url, self._async);
+                      Object.keys(self._headers).forEach(function(key) {
+                        xhr.setRequestHeader(key, self._headers[key]);
+                      });
+                      xhr.onload = function() {
+                        self.status = xhr.status;
+                        self.responseText = xhr.responseText;
+                        self.response = xhr.response;
+                        self.readyState = 4;
+                        if (self.onreadystatechange) self.onreadystatechange();
+                        if (self.onload) self.onload();
+                      };
+                      xhr.onerror = function() {
+                        if (self.onerror) self.onerror();
+                      };
+                      xhr.send(body);
+                      return;
+                    }
+
+                    window.flutter_inappwebview.callHandler('fetch', {
+                      url: self._url,
+                      method: self._method,
+                      headers: self._headers,
+                      body: body
+                    }).then(function(result) {
+                      self.status = (result && result.status) ? result.status : 0;
+                      self.responseText = result && result.body ? result.body : '';
+                      self.response = self.responseText;
+                      self.readyState = 4;
+                      if (self.onreadystatechange) self.onreadystatechange();
+                      if (self.onload) self.onload();
+                    }).catch(function() {
+                      if (self.onerror) self.onerror();
+                    });
+                  };
+
+                  window.XMLHttpRequest = ProxyXHR;
+                }
+
                 window._evenEmuFlushLogs = function() {
                   if (!canSend()) return;
                   var queue = window._evenEmuQueuedLogs || [];
@@ -408,6 +534,35 @@ class _EmulatorHomePageState extends State<EmulatorHomePage> with WidgetsBinding
                     });
                   }
                 });
+
+                window._evenAppHandleMessage = window._evenAppHandleMessage || function(message) {
+                  if (window.EvenAppBridge && typeof window.EvenAppBridge.handleEvenAppMessage === 'function') {
+                    try {
+                      window.EvenAppBridge.handleEvenAppMessage(message);
+                      return;
+                    } catch (e) {}
+                  }
+                  if (!message || message.type !== 'listen_even_app_data') {
+                    return;
+                  }
+                  if (message.method === 'deviceStatusChanged') {
+                    window.dispatchEvent(new CustomEvent('deviceStatusChanged', { detail: message.data }));
+                  } else if (message.method === 'evenHubEvent') {
+                    window.dispatchEvent(new CustomEvent('evenHubEvent', { detail: message.data }));
+                  }
+                };
+
+                function signalReady() {
+                  if (canSend()) {
+                    window.flutter_inappwebview.callHandler('webReady');
+                  }
+                }
+
+                if (document.readyState === 'complete' || document.readyState === 'interactive') {
+                  setTimeout(signalReady, 0);
+                }
+                window.addEventListener('DOMContentLoaded', signalReady);
+                window.addEventListener('load', signalReady);
               })();
             ''',
             injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
@@ -427,7 +582,7 @@ class _EmulatorHomePageState extends State<EmulatorHomePage> with WidgetsBinding
               return null;
             }
             final payload = (args.first as Map).map((key, value) => MapEntry('$key', value));
-            _appendWebErrorEntry(_WebErrorEntry(
+            _appendWebErrorEntry(WebErrorEntry(
               timestamp: DateTime.now(),
               label: payload['label']?.toString() ?? 'JS Error',
               details: payload['details']?.toString() ?? 'Unknown error',
@@ -444,7 +599,7 @@ class _EmulatorHomePageState extends State<EmulatorHomePage> with WidgetsBinding
             final payload = (args.first as Map).map((key, value) => MapEntry('$key', value));
             final level = _levelFromString(payload['level']?.toString());
             final message = payload['message']?.toString() ?? '';
-            _appendConsoleEntry(_ConsoleEntry(
+            _appendConsoleEntry(ConsoleEntry(
               timestamp: DateTime.now(),
               level: level,
               message: message,
@@ -512,85 +667,112 @@ class _EmulatorHomePageState extends State<EmulatorHomePage> with WidgetsBinding
             }
           },
         );
+        controller.addJavaScriptHandler(
+          handlerName: 'webReady',
+          callback: (args) async {
+            if (controller != _activeWebViewController) {
+              return null;
+            }
+            if (_webReadyNotified) {
+              return null;
+            }
+            _webReadyNotified = true;
+            _bridgeHost.onWebReady();
+            await _applyWebViewZoom();
+            return null;
+          },
+        );
         _loadIndex(controller);
       },
       // Console output is captured via injected JS to avoid duplicate lines.
       onLoadError: (controller, url, code, message) {
+        debugPrint("onLoadError");
         _isReloading = false;
-        _appendWebErrorEntry(_WebErrorEntry(
+        _appendWebErrorEntry(WebErrorEntry(
           timestamp: DateTime.now(),
           label: 'Load Error',
           details: '[$code] $message (${url?.toString() ?? 'unknown url'})',
         ));
       },
       onLoadHttpError: (controller, url, statusCode, description) {
+        debugPrint("onLoadHttpError");
         _isReloading = false;
-        _appendWebErrorEntry(_WebErrorEntry(
+        _appendWebErrorEntry(WebErrorEntry(
           timestamp: DateTime.now(),
           label: 'HTTP Error',
           details: '[$statusCode] $description (${url?.toString() ?? 'unknown url'})',
         ));
       },
       onLoadResource: (controller, resource) {
-        _appendWebErrorEntry(_WebErrorEntry(
+        debugPrint("onLoadResource");
+        _appendWebErrorEntry(WebErrorEntry(
           timestamp: DateTime.now(),
           label: 'Resource Load',
           details: resource.url?.toString() ?? 'unknown url',
         ));
       },
       onLoadStop: (controller, url) async {
-        await controller.evaluateJavascript(source: '''
-          window._evenAppHandleMessage = window._evenAppHandleMessage || function(message) {
-            if (window.EvenAppBridge) {
-              try {
-                window.EvenAppBridge.handleEvenAppMessage(message);
-                return;
-              } catch (e) {
-              }
+        debugPrint("onLoadStop");
+        if (controller != _activeWebViewController) {
+          return;
+        }
+        try {
+          await controller.evaluateJavascript(source: '''
+            if (window._evenEmuFlushLogs) {
+              window._evenEmuFlushLogs();
             }
-            if (!message || message.type !== 'listen_even_app_data') {
-              return;
-            }
-            if (message.method === 'deviceStatusChanged') {
-              window.dispatchEvent(new CustomEvent('deviceStatusChanged', { detail: message.data }));
-            } else if (message.method === 'evenHubEvent') {
-              window.dispatchEvent(new CustomEvent('evenHubEvent', { detail: message.data }));
-            }
-          };
-          if (window._evenEmuFlushLogs) {
-            window._evenEmuFlushLogs();
-          }
-        ''');
+          ''');
+        } catch (_) {}
         _isReloading = false;
-        _bridgeHost.onWebReady();
+        if (!_webReadyNotified) {
+          _webReadyNotified = true;
+          _bridgeHost.onWebReady();
+        }
+        await _applyWebViewZoom();
       },
     );
   }
 
-  Widget _buildGlassesPanel() {
+  Widget _buildGlassesPanel({required bool compact}) {
+    final glasses = GlassesScreen(
+      state: _state,
+      bridgeHost: _bridgeHost,
+      onHoverPositionChanged: (position) {
+        setState(() {
+          _hoverPosition = position;
+        });
+      },
+      pixelPerfect: _pixelPerfect,
+      onToggleWearing: (value) {
+        setState(() {
+          _state.deviceInfo.status.isWearing = value;
+        });
+        _bridgeHost.pushDeviceStatusChanged();
+      },
+    );
+
+    if (compact) {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          glasses,
+          _buildStatusFooter(compact: true),
+        ],
+      );
+    }
+
     return Column(
       children: [
-        Expanded(
-          child: GlassesScreen(
-            state: _state,
-            bridgeHost: _bridgeHost,
-            onHoverPositionChanged: (position) {
-              setState(() {
-                _hoverPosition = position;
-              });
-            },
-            pixelPerfect: _pixelPerfect,
-          ),
-        ),
-        _buildStatusFooter(),
+        Expanded(child: glasses),
+        _buildStatusFooter(compact: false),
       ],
     );
   }
 
-  Widget _buildStatusFooter() {
+  Widget _buildStatusFooter({required bool compact}) {
     final hoverPosition = _hoverPosition;
     return Padding(
-      padding: const EdgeInsets.all(12),
+      padding: EdgeInsets.all(compact ? 6 : 12),
       child: Row(
         children: [
           Expanded(
@@ -612,6 +794,157 @@ class _EmulatorHomePageState extends State<EmulatorHomePage> with WidgetsBinding
             style: Theme.of(context).textTheme.bodySmall,
           ),
         ],
+      ),
+    );
+  }
+
+  Drawer _buildDrawer(bool isMobile) {
+    return Drawer(
+      child: SafeArea(
+        child: ListView(
+          padding: EdgeInsets.zero,
+          children: [
+            const DrawerHeader(
+              child: Text('EvenHub Emulator'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.folder_open),
+              title: const Text('Open Index'),
+              onTap: () async {
+                Navigator.of(context).pop();
+                if (isMobile) {
+                  await _promptForUrlAndLoad();
+                } else {
+                  await _pickAndLoadIndex();
+                }
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.refresh),
+              title: const Text('Reload Index'),
+              onTap: () {
+                Navigator.of(context).pop();
+                _reloadCurrentIndex();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.help_outline),
+              title: const Text('Help'),
+              onTap: () {
+                Navigator.of(context).pop();
+                _showHelpDialog();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.list_alt),
+              title: const Text('Logs'),
+              onTap: () {
+                Navigator.of(context).pop();
+                _openLogsPage();
+              },
+            ),
+            const Divider(),
+            SwitchListTile(
+              title: const Text('Pixel Perfect (1:1)'),
+              value: _pixelPerfect,
+              onChanged: (value) {
+                setState(() {
+                  _pixelPerfect = value;
+                });
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.zoom_in),
+              title: const Text('WebView Zoom'),
+              subtitle: Slider(
+                value: _webViewZoom,
+                min: 0.5,
+                max: 2.0,
+                divisions: 15,
+                label: _webViewZoom.toStringAsFixed(2),
+                onChanged: (value) async {
+                  setState(() {
+                    _webViewZoom = value;
+                  });
+                  await _applyWebViewZoom();
+                },
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.wifi),
+              title: const Text('Send Device Status'),
+              onTap: () {
+                Navigator.of(context).pop();
+                _bridgeHost.pushDeviceStatusChanged();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.battery_alert),
+              title: const Text('Battery -10%'),
+              onTap: () {
+                Navigator.of(context).pop();
+                _drainBattery();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _promptForUrlAndLoad() async {
+    final controller = TextEditingController(text: _currentIndexUrl ?? '');
+    final url = await showDialog<String>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Load URL'),
+          content: TextField(
+            controller: controller,
+            decoration: const InputDecoration(
+              hintText: 'https://example.com/index.html',
+            ),
+            keyboardType: TextInputType.url,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(controller.text.trim()),
+              child: const Text('Load'),
+            ),
+          ],
+        );
+      },
+    );
+    if (url == null || url.isEmpty) {
+      return;
+    }
+    final normalized = _normalizeUrl(url);
+    if (normalized == null) {
+      _appendWebErrorEntry(WebErrorEntry(
+        timestamp: DateTime.now(),
+        label: 'Load Error',
+        details: 'Invalid URL: $url',
+      ));
+      return;
+    }
+    _serveMode = _ServeMode.externalUrl;
+    _currentIndexUrl = normalized;
+    _currentIndexPath = null;
+    await _saveMobileUrl(normalized);
+    await _loadNewIndex(null);
+  }
+
+  void _openLogsPage() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => LogsPage(
+          consoleLines: _consoleEntries.map((entry) => entry.formatLine()).toList(),
+          errorLines: _webErrorEntries.map((entry) => entry.formatLine()).toList(),
+        ),
       ),
     );
   }
@@ -741,7 +1074,7 @@ class _EmulatorHomePageState extends State<EmulatorHomePage> with WidgetsBinding
     );
   }
 
-  void _appendConsoleEntry(_ConsoleEntry entry) {
+  void _appendConsoleEntry(ConsoleEntry entry) {
     final shouldStickToBottom = !_consoleScrollController.hasClients ||
         (_consoleScrollController.position.maxScrollExtent - _consoleScrollController.position.pixels) <= 4;
 
@@ -762,7 +1095,7 @@ class _EmulatorHomePageState extends State<EmulatorHomePage> with WidgetsBinding
     }
   }
 
-  void _appendWebErrorEntry(_WebErrorEntry entry) {
+  void _appendWebErrorEntry(WebErrorEntry entry) {
     final shouldStickToBottom = !_webErrorScrollController.hasClients ||
         (_webErrorScrollController.position.maxScrollExtent - _webErrorScrollController.position.pixels) <= 4;
 
@@ -784,15 +1117,57 @@ class _EmulatorHomePageState extends State<EmulatorHomePage> with WidgetsBinding
   }
 
   Future<void> _loadIndex(InAppWebViewController controller) async {
+    debugPrint("_loadIndex");
+    if (!mounted || controller != _activeWebViewController) {
+      return;
+    }
+    //try {
+
+    //  await controller.clearCache();
+    //} catch (e)
+    //{
+    //  debugPrint('Error: $e');
+    //}
+    //try {
+    //  await controller.clearCache();
+    //} catch (_) {}
+    if (!mounted || controller != _activeWebViewController) {
+      return;
+    }
+    const noCacheHeaders = {
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0',
+    };
+    if (_serveMode == _ServeMode.externalUrl &&
+        _currentIndexUrl != null &&
+        _currentIndexUrl!.isNotEmpty) {
+      final url = _withCacheBust(_currentIndexUrl!, _externalReloadNonce);
+      if (!mounted || controller != _activeWebViewController) {
+        return;
+      }
+      await controller.loadUrl(
+        urlRequest: URLRequest(
+          url: WebUri(url),
+          headers: noCacheHeaders,
+        ),
+      );
+      return;
+    }
+
     if (_currentIndexUrl == null || _currentIndexUrl!.isEmpty) {
       await _ensureServerForCurrentSource();
     }
     if (_currentIndexUrl == null || _currentIndexUrl!.isEmpty) {
       return;
     }
+    if (!mounted || controller != _activeWebViewController) {
+      return;
+    }
     await controller.loadUrl(
       urlRequest: URLRequest(
         url: WebUri(_currentIndexUrl!),
+        headers: noCacheHeaders,
       ),
     );
   }
@@ -819,6 +1194,9 @@ class _EmulatorHomePageState extends State<EmulatorHomePage> with WidgetsBinding
   }
 
   Future<void> _reloadCurrentIndex() async {
+    if (_serveMode == _ServeMode.externalUrl) {
+      _externalReloadNonce += 1;
+    }
     await _loadNewIndex(_currentIndexPath);
   }
 
@@ -860,19 +1238,31 @@ class _EmulatorHomePageState extends State<EmulatorHomePage> with WidgetsBinding
   }
 
   Future<void> _loadNewIndex(String? path) async {
+    debugPrint("load new index");
     if (_isReloading) {
       return;
     }
     _isReloading = true;
+    _scheduleReloadTimeout();
+    debugPrint("disposing");
+    _activeWebViewController = null;
+    _bridgeHost.detachWebViewController();
+    _webReadyNotified = false;
     _bridgeHost.resetForReload();
     _resetGlassesState();
     setState(() {
       _consoleEntries.clear();
       _webErrorEntries.clear();
     });
-    _currentIndexUrl = null;
+    if (_serveMode != _ServeMode.externalUrl) {
+      _currentIndexUrl = null;
+    }
     if (path != null && path.isNotEmpty) {
+      _serveMode = _ServeMode.directory;
       _currentIndexPath = path;
+    }
+    if (_serveMode == _ServeMode.externalUrl) {
+      _externalReloadNonce += 1;
     }
     setState(() {
       _webViewResetCounter += 1;
@@ -880,10 +1270,13 @@ class _EmulatorHomePageState extends State<EmulatorHomePage> with WidgetsBinding
   }
 
   Future<void> _ensureServerForCurrentSource() async {
+    if (_serveMode == _ServeMode.externalUrl) {
+      return;
+    }
     final serveMode = _serveMode;
     final port = _servePort ?? await _reservePort();
     if (port == null) {
-      _appendWebErrorEntry(_WebErrorEntry(
+      _appendWebErrorEntry(WebErrorEntry(
         timestamp: DateTime.now(),
         label: 'Serve Error',
         details: 'Unable to reserve a local port.',
@@ -903,7 +1296,7 @@ class _EmulatorHomePageState extends State<EmulatorHomePage> with WidgetsBinding
           _currentIndexUrl = 'http://localhost:$port/$fileName';
           return;
         }
-        _appendWebErrorEntry(_WebErrorEntry(
+        _appendWebErrorEntry(WebErrorEntry(
           timestamp: DateTime.now(),
           label: 'Serve Error',
           details: 'Index file not found: $indexPath',
@@ -914,6 +1307,85 @@ class _EmulatorHomePageState extends State<EmulatorHomePage> with WidgetsBinding
 
     await _startServeServer('', port, _ServeMode.assets);
     _currentIndexUrl = 'http://localhost:$port/index.html';
+  }
+
+  Future<void> _loadMobileSavedUrl() async {
+    if (!(Platform.isAndroid || Platform.isIOS)) {
+      return;
+    }
+    final prefs = await SharedPreferences.getInstance();
+    final url = prefs.getString(_mobileUrlPrefKey);
+    if (url == null || url.isEmpty) {
+      return;
+    }
+    final normalized = _normalizeUrl(url);
+    if (normalized == null) {
+      return;
+    }
+    setState(() {
+      _serveMode = _ServeMode.externalUrl;
+      _currentIndexUrl = normalized;
+      _currentIndexPath = null;
+      _webViewResetCounter += 1;
+    });
+  }
+
+  Future<void> _saveMobileUrl(String url) async {
+    if (!(Platform.isAndroid || Platform.isIOS)) {
+      return;
+    }
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_mobileUrlPrefKey, url);
+  }
+
+  Future<void> _applyWebViewZoom() async {
+    final controller = _activeWebViewController;
+    if (controller == null || !mounted) {
+      return;
+    }
+    try {
+      await controller.evaluateJavascript(
+        source: '''
+          (function() {
+            var zoom = ${_webViewZoom.toStringAsFixed(2)};
+            document.documentElement.style.zoom = zoom;
+            document.body.style.zoom = zoom;
+          })();
+        ''',
+      );
+    } catch (_) {}
+  }
+
+  String? _normalizeUrl(String url) {
+    final trimmed = url.trim();
+    if (trimmed.isEmpty) {
+      return null;
+    }
+    final hasScheme = trimmed.startsWith('http://') || trimmed.startsWith('https://');
+    final normalized = hasScheme ? trimmed : 'http://$trimmed';
+    final uri = Uri.tryParse(normalized);
+    if (uri == null || (!uri.hasScheme) || uri.host.isEmpty) {
+      return null;
+    }
+    return uri.toString();
+  }
+
+  void _scheduleReloadTimeout() {
+    Future<void>.delayed(const Duration(seconds: 10)).then((_) {
+      if (mounted && _isReloading) {
+        _isReloading = false;
+      }
+    });
+  }
+
+  String _withCacheBust(String url, int nonce) {
+    if (nonce == 0) {
+      return url;
+    }
+    final uri = Uri.parse(url);
+    final queryParameters = Map<String, String>.from(uri.queryParameters);
+    queryParameters['_ts'] = DateTime.now().millisecondsSinceEpoch.toString();
+    return uri.replace(queryParameters: queryParameters).toString();
   }
 
   Future<int?> _reservePort() async {
@@ -991,7 +1463,7 @@ class _EmulatorHomePageState extends State<EmulatorHomePage> with WidgetsBinding
         await request.response.close();
       });
     } catch (error) {
-      _appendWebErrorEntry(_WebErrorEntry(
+      _appendWebErrorEntry(WebErrorEntry(
         timestamp: DateTime.now(),
         label: 'Serve Error',
         details: 'Unable to start local server: $error',
@@ -1037,8 +1509,8 @@ class _EmulatorHomePageState extends State<EmulatorHomePage> with WidgetsBinding
   }
 }
 
-class _ConsoleEntry {
-  _ConsoleEntry({
+class ConsoleEntry {
+  ConsoleEntry({
     required this.timestamp,
     required this.level,
     required this.message,
@@ -1048,8 +1520,8 @@ class _ConsoleEntry {
   final ConsoleMessageLevel level;
   final String message;
 
-  factory _ConsoleEntry.fromMessage(ConsoleMessage message) {
-    return _ConsoleEntry(
+  factory ConsoleEntry.fromMessage(ConsoleMessage message) {
+    return ConsoleEntry(
       timestamp: DateTime.now(),
       level: message.messageLevel,
       message: message.message,
@@ -1115,8 +1587,8 @@ String _injectBaseHref(String html, String baseUrl) {
   return html.substring(0, headClose + 1) + '\n  $baseTag' + html.substring(headClose + 1);
 }
 
-class _WebErrorEntry {
-  _WebErrorEntry({
+class WebErrorEntry {
+  WebErrorEntry({
     required this.timestamp,
     required this.label,
     required this.details,
@@ -1158,4 +1630,4 @@ ContentType _contentTypeForPath(String path) {
   return ContentType.binary;
 }
 
-enum _ServeMode { assets, directory }
+enum _ServeMode { assets, directory, externalUrl }

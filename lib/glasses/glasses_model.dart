@@ -218,10 +218,19 @@ class PageContainerPayload {
         .where((container) => !container.isEmpty)
         .toList();
 
-    int? eventCapture;
-    for (final container in [...listContainers, ...textContainers, ...imageContainers]) {
-      if (container.isEventCapture) {
-        eventCapture = container.containerID;
+    int? eventCapture = _readInt(data, [
+      'eventCaptureContainerId',
+      'eventCaptureContainerID',
+      'eventCaptureId',
+      'Event_capture_container_id',
+      'Event_Capture_Container_Id',
+    ]);
+    if (eventCapture == null) {
+      for (final container in [...listContainers, ...textContainers, ...imageContainers]) {
+        if (container.isEventCapture) {
+          eventCapture = container.containerID;
+          break;
+        }
       }
     }
 
