@@ -1,6 +1,6 @@
 # Feedback and thoughts on EvenHub
 
-## Easy Improvement: Cross origin restrictions
+## Easy Improvement (with fix examples): Cross origin restrictions
 Allowing more cross site operations would make building apps much easier.  The app currently obeys standard rules, meaning I can load images or use websockets cross origin, however the following fail:
 * fetch from another domain
 * fetch from a mixed mode (fetching https from http or vice versa)
@@ -43,6 +43,7 @@ For an example of these fixes, I did this in my model of your guys app, it eased
 ## Improvement: Audio transcription
 I'm guessing you guys are already thinkign about this:
 * Audio is great - if you guys could provide the same even ai transcription as an option that would be super useful so people don't have to implement their own.  Perhaps a bridge.audioTranscribeControl(true) and then an audioTranscribe event
+  
 
 ## Improvement: image handling 
 You are already communicating uncompressed bmp data for images over the ble connection - it would be very helpful if we could do the following:
@@ -50,7 +51,7 @@ You are already communicating uncompressed bmp data for images over the ble conn
 * Allow partial updates to that raw pixel buffer - for example I might only want to update a small square of the full image, right now (as far as I can tell) I have to update the full image.
 * (Not sure if this is possible depending on memory constraints) allow pre writing over images and then "switching" to a pre loaded buffer rather than having to write the data each time
 
-## Improvement: Native functionality for free
+## Improvement idea: Native functionality for free
 This is not asking you to add native functionality - it's suggesting how you can allow it pretty easily with not a ton of work on your side:
 
 There are a lot of places where you need some sort of native api for useful functionality - the way I've dealt with this is to build another app (generally flutter) that contains a small webserver and serves native requests to the even hub app.  
