@@ -51,7 +51,21 @@ You are already communicating uncompressed bmp data for images over the ble conn
 * Allow partial updates to that raw pixel buffer - for example I might only want to update a small square of the full image, right now (as far as I can tell) I have to update the full image.
 * (Not sure if this is possible depending on memory constraints) allow pre writing over images and then "switching" to a pre loaded buffer rather than having to write the data each time
 
-## Improvement idea: Native functionality for free
+
+
+## Improvement idea: Native functionaly relatively for free (part #1)
+You're going to (and already are) running into issues with the fact apps are hosted in a webview/gui element - which makes dealing with backgrounding hard.  It would be easy to expose the same even bridge method channels over either a urlscheme, intents, or an in app (localhost only) webserver that other apps could communicate with to make the same evenhub calls.
+
+This could be useful (it would allow me to write full android apps, even background ones) that can send info to the glasses.  
+
+Where this could get difficult: 
+* It's not hard to expose this stuff but its also not trivial in terms of testing
+* It could get more complicated if there are multiple apps that try to communicate - it might require some sort of scheme that disables or ignores specific apps if they are not active
+
+This could be very useful for existing apps to expose functionality to even or make it easier to do some things like have a background app.
+
+
+## Improvement idea: Native functionality for free (part #2 - if you don't like part #1)
 This is not asking you to add native functionality - it's suggesting how you can allow it pretty easily with not a ton of work on your side:
 
 There are a lot of places where you need some sort of native api for useful functionality - the way I've dealt with this is to build another app (generally flutter) that contains a small webserver and serves native requests to the even hub app.  
@@ -71,6 +85,7 @@ A good example is the request to be able to communicate with other ble devices -
 If you (Even) are concerned that this takes some of the "appstore" aspect out of your guys control, it would be easy to have some sort of signing key or registration mechanism an app needs to go through to work with evenhub in this way - which would allow Even to control / own the appstore aspect still.
 
 An example I've done this with:  I needed an interface to anki (flashcards) on phone - my native app provides both the evenhub webpage, proxy requests to get around cross origin restrictions, and translation of web requests into native anki api calls.
+
 
 
 ## Wishlist / Nice to haves but not critical
