@@ -1,4 +1,4 @@
-# Feedback and thoughts on EvenHub
+# Feedback and ideas for EvenHub
 
 ## Easy Improvement (with fix examples): Cross origin restrictions
 Allowing more cross site operations would make building apps much easier.  The app currently obeys standard rules, meaning I can load images or use websockets cross origin, however the following fail:
