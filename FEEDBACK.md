@@ -56,7 +56,7 @@ You are already communicating uncompressed bmp data for images over the ble conn
 ## Improvement idea: Native functionaly relatively for free (part #1)
 You're going to (and already are) running into issues with the fact apps are hosted in a webview/gui element - which makes dealing with backgrounding hard.  It would be easy to expose the same even bridge method channels over either a urlscheme, intents, or an in app (localhost only) webserver that other apps could communicate with to make the same evenhub calls.
 
-This could be useful (it would allow me to write full android apps, even background ones) that can send info to the glasses.  
+This would allow native apps (even background services) to send info to the glasses.  
 
 Where this could get difficult: 
 * It's not hard to expose this stuff but its also not trivial in terms of testing
