@@ -69,12 +69,9 @@ This could be very useful for existing apps to expose functionality to even or m
 This is not asking you to add native functionality - it's suggesting how you can allow it pretty easily with not a ton of work on your side:
 
 There are a lot of places where you need some sort of native api for useful functionality - the way I've dealt with this is to build another app (generally flutter) that contains a small webserver and serves native requests to the even hub app.  
-I've also been having this serve the actual even application too.  
+I've also been having this serve the actual even application.  
 
-One thing that would be very useful is if your even app had some sort of registration mechanism (maybe through android Intents, whatever is equivalent on iOS) to allow an external app to auto register an even hub application (rather than having to do it separately), 
-so that if you install an app, it's auto available in evenHub.  
-
-It would be very simple for the community to have a library that handled / setup most of this for people in other apps (rather than having to write a webserver).
+One thing that would be very useful is if your even app had some sort of registration mechanism (maybe through android Intents, whatever is equivalent on iOS) to allow an external app to auto register an even hub application (rather than having to do it separately), so that if you install an app, it's auto available in evenHub.  
 
 This would also make it infinitely simpler to provide functionality that already exists in other apps.  If I already have an app that works, adding an even interface is way simpler than rewriting all app functionality into a (potentially more restrictive) setup.
 
@@ -83,9 +80,6 @@ I think this would also help you guys (Even) to solve a lot of requests for what
 A good example is the request to be able to communicate with other ble devices - this really shouldn't be in the purview of your sdk, especially if you can auto allow for a bridge to native code.
 
 If you (Even) are concerned that this takes some of the "appstore" aspect out of your guys control, it would be easy to have some sort of signing key or registration mechanism an app needs to go through to work with evenhub in this way - which would allow Even to control / own the appstore aspect still.
-
-An example I've done this with:  I needed an interface to anki (flashcards) on phone - my native app provides both the evenhub webpage, proxy requests to get around cross origin restrictions, and translation of web requests into native anki api calls.
-
 
 
 ## Wishlist / Nice to haves but not critical
