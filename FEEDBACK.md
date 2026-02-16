@@ -41,7 +41,7 @@ For an example of these fixes, I did this in my model of your guys app, it eased
   
 
 ## Improvement: Audio transcription
-I'm guessing you guys are already thinkign about this:
+I'm guessing you guys are already thinking about this:
 * Audio is great - if you guys could provide the same even ai transcription as an option that would be super useful so people don't have to implement their own.  Perhaps a bridge.audioTranscribeControl(true) and then an audioTranscribe event
   
 
