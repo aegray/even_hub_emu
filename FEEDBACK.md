@@ -29,6 +29,27 @@ For an example of these fixes, I did this in my model of your guys app, it eased
 
 
 
+
+
+
+
+
+## EvenHub Oddities / quirks that could be improved:
+* It's weird that scrolling in evenhub is the opposite direction of scrolling everywhere else in the firmware.  This just feels off as a user
+
+* It would be nice if some more events are exposed - for example you don't get an event for scrolling a list but its sometimes useful to know what is currently highlighted.  I think (but may be wrong) that single click on a text doesn't work either (although looking at the bluetooth it is reported)
+  
+
+## Improvement: Audio transcription
+I'm guessing you guys are already thinkign about this:
+* Audio is great - if you guys could provide the same even ai transcription as an option that would be super useful so people don't have to implement their own.  Perhaps a bridge.audioTranscribeControl(true) and then an audioTranscribe event
+
+## Improvement: image handling 
+You are already communicating uncompressed bmp data for images over the ble connection - it would be very helpful if we could do the following:
+* Send an explicit raw pixel buffer rather than png (or even bmp) data
+* Allow partial updates to that raw pixel buffer - for example I might only want to update a small square of the full image, right now (as far as I can tell) I have to update the full image.
+* (Not sure if this is possible depending on memory constraints) allow pre writing over images and then "switching" to a pre loaded buffer rather than having to write the data each time
+
 ## Improvement: Native functionality for free
 This is not asking you to add native functionality - it's suggesting how you can allow it pretty easily with not a ton of work on your side:
 
@@ -49,25 +70,6 @@ A good example is the request to be able to communicate with other ble devices -
 If you (Even) are concerned that this takes some of the "appstore" aspect out of your guys control, it would be easy to have some sort of signing key or registration mechanism an app needs to go through to work with evenhub in this way - which would allow Even to control / own the appstore aspect still.
 
 An example I've done this with:  I needed an interface to anki (flashcards) on phone - my native app provides both the evenhub webpage, proxy requests to get around cross origin restrictions, and translation of web requests into native anki api calls.
-
-
-
-
-## EvenHub Oddities / quirks that could be improved:
-* It's weird that scrolling in evenhub is the opposite direction of scrolling everywhere else in the firmware.  This just feels off as a user
-
-* It would be nice if some more events are exposed - for example you don't get an event for scrolling a list but its sometimes useful to know what is currently highlighted.  I think (but may be wrong) that single click on a text doesn't work either (although looking at the bluetooth it is reported)
-  
-
-## Improvement: Audio transcription
-I'm guessing you guys are already thinkign about this:
-* Audio is great - if you guys could provide the same even ai transcription as an option that would be super useful so people don't have to implement their own.  Perhaps a bridge.audioTranscribeControl(true) and then an audioTranscribe event
-
-## Improvement: image handling 
-You are already communicating uncompressed bmp data for images over the ble connection - it would be very helpful if we could do the following:
-* Send an explicit raw pixel buffer rather than png (or even bmp) data
-* Allow partial updates to that raw pixel buffer - for example I might only want to update a small square of the full image, right now (as far as I can tell) I have to update the full image.
-* (Not sure if this is possible depending on memory constraints) allow pre writing over images and then "switching" to a pre loaded buffer rather than having to write the data each time
 
 
 ## Wishlist / Nice to haves but not critical
